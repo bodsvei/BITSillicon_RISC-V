@@ -18,7 +18,6 @@ A fully synthesizable implementation of a 32-bit, 5-stage pipelined RISC-V proce
 - [Test Programs](#test-programs)
 - [Synthesis](#synthesis)
 - [Contributors](#contributors)
-- [References](#references)
 
 ---
 
