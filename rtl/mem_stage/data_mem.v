@@ -146,14 +146,4 @@ module data_mem (
             endcase
         end
     end
-
-    // ==========================================================================
-    // Optional: load initial memory contents from a hex file (for simulation)
-    // ==========================================================================
-    // If you want to pre‑fill the memory with a program's data, uncomment the
-    // lines below and provide a data_mem.hex file.
-    // initial begin
-    //     $readmemh("data_mem.hex", mem);
-    // end
-
 endmodule
