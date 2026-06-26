@@ -1,7 +1,6 @@
-# BITSillicon_RISC-V
-# RV32I 5-Stage Pipelined RISC-V Processor
+# BITSilicon RV32I 5-Stage Pipelined RISC-V Processor
 
-A fully synthesizable implementation of a 32-bit, 5-stage pipelined RISC-V processor in Verilog, supporting the RV32I base integer instruction set. Developed as a collaborative hardware design project by a 14-member team.
+A fully synthesizable implementation of a 32-bit, 5-stage pipelined RISC-V processor in Verilog, supporting the RV32I base integer instruction set. Developed as a collaborative hardware design project by a 12-member team.
 
 ---
 
@@ -166,11 +165,8 @@ Top-level wrapper instantiating all pipeline stages, hazard detection, and forwa
 ### rtl/if_stage/
 Implements the PC register with synchronous reset, the instruction memory initialized from a `.hex` file, the next-PC mux (PC+4 vs branch/jump target), and the IF/ID pipeline register with flush and stall inputs.
 
-### rtl/id_stage/instr_decoder.v
-Extracts opcode `[6:0]`, funct3 `[14:12]`, funct7b5 `[30]`, rs1 `[19:15]`, rs2 `[24:20]`, and rd `[11:7]` from the 32-bit instruction word. Feeds raw fields to the control unit and immediate generator.
-
-### rtl/id_stage/imm_gen.v
-Generates a 32-bit sign-extended immediate from any of the six RV32I immediate encodings (I, S, B, U, J). Format is selected based on the opcode.
+### rtl/id_stage/instr_decoder.v and imm_gen.v
+Both files are owned by the same sub-project. `instr_decoder.v` extracts opcode `[6:0]`, funct3 `[14:12]`, funct7b5 `[30]`, rs1 `[19:15]`, rs2 `[24:20]`, and rd `[11:7]` from the 32-bit instruction word, feeding raw fields to the control unit and immediate generator. `imm_gen.v` generates a 32-bit sign-extended immediate from any of the six RV32I immediate encodings (I, S, B, U, J), with format selected from the opcode. Both modules share the same instruction word input and are naturally paired for ownership.
 
 ### rtl/id_stage/reg_file.v
 Implements the 32 x 32-bit general-purpose register file. Two asynchronous read ports, one synchronous write port. x0 is permanently tied to zero and ignores writes. Write-before-read behaviour on address collision is defined explicitly to avoid simulation ambiguity.
@@ -190,11 +186,8 @@ Byte-addressed synchronous data memory. Supports byte, halfword, and word access
 ### rtl/wb_stage/writeback.v
 Three-input result mux selecting between ALUResult, MemReadData, and PC+4 (used by JAL/JALR for link register write). Drives the write-back path into the register file.
 
-### rtl/hazard/hazard_detect.v
-Detects load-use RAW hazards by comparing the EX-stage destination register against the ID-stage source registers when MemRead is asserted. Generates StallF, StallD, and FlushE. Detects branch-taken events and generates FlushD and FlushE for the 1-cycle control hazard penalty.
-
-### rtl/hazard/forward_unit.v
-Resolves RAW data hazards without stalling using two forwarding paths. EX-EX forwarding: from the EX/MEM register to the ALU inputs. MEM-EX forwarding: from the MEM/WB register to the ALU inputs. Generates `ForwardA[1:0]` and `ForwardB[1:0]` multiplexer select signals. Load-use hazards that cannot be forwarded are handled by the hazard detection unit.
+### rtl/hazard/hazard_detect.v and forward_unit.v
+Both files are owned by the same sub-project. `hazard_detect.v` detects load-use RAW hazards by comparing the EX-stage destination register against the ID-stage source registers when MemRead is asserted, generating StallF, StallD, and FlushE. It also detects branch-taken events and generates FlushD and FlushE for the 1-cycle control hazard penalty. `forward_unit.v` resolves RAW data hazards without stalling: EX-EX forwarding carries results from the EX/MEM register to the ALU inputs, and MEM-EX forwarding carries results from the MEM/WB register to the ALU inputs, generating `ForwardA[1:0]` and `ForwardB[1:0]` mux select signals. These two modules are merged under one owner because the decision of whether to stall versus forward for any given hazard requires constant cross-reference between them.
 
 ---
 
@@ -207,16 +200,10 @@ Resolves RAW data hazards without stalling using two forwarding paths. EX-EX for
 - Python 3.8+ (for the assembler script)
 - GNU RISC-V toolchain (optional, for compiling C to RISC-V assembly)
 
-Installing Icarus Verilog on Ubuntu/Debian:
-
-```bash
-sudo apt-get install iverilog gtkwave
-```
-
 ### Cloning the Repository
 
 ```bash
-git clone https://github.com/<org>/riscv-processor.git
+git clone https://github.com/bodsvei/BITSillicon_RISC-V
 cd riscv-processor
 ```
 
@@ -295,21 +282,19 @@ Target utilization is under 5% of Artix-7 LUT resources for the base RV32I datap
 
 ## Contributors
 
-| Sub-project | Description |
-|---|---|
-| Architecture Spec + Top Integration | Top-level design and inter-module interface |
-| IF Stage | PC register, instruction memory, IF/ID register |
-| Instruction Decoder | Field extraction from 32-bit instruction word |
-| Immediate Generator | All six RV32I immediate encodings |
-| Register File | 32x32 register file with two read ports |
-| Control Unit | Main decoder and ALU control logic |
-| ALU | All RV32I arithmetic and logic operations |
-| Branch and Jump Unit | Condition evaluation and target computation |
-| ID/EX Pipeline Register | EX stage mux and pipeline stage boundary |
-| EX/MEM Register + MEM Stage | Data memory and load/store extension |
-| MEM/WB Register + Write-Back | Result mux and register file write path |
-| Hazard Detection Unit | Stall and flush signal generation |
-| Forwarding Unit | EX-EX and MEM-EX forwarding paths |
-| Verification and Testbench | Unit and integration testbenches, test programs |
+| Sub-project | Description | Contributing
+|---|---|---|
+| Architecture Spec + Top Integration | Top-level design and inter-module interface | Anirudh + Parhawk
+| IF Stage | PC register, instruction memory, IF/ID register | Rohan
+| Instruction Decoder + Immediate Generator | Field extraction and all six RV32I immediate encodings | Vivaan
+| Register File | 32x32 register file with two read ports | Abhimanyu
+| Control Unit | Main decoder and ALU control logic | Anirudh
+| ALU | All RV32I arithmetic and logic operations | Dev + Anirudh
+| Branch and Jump Unit | Condition evaluation and target computation | Aparna
+| ID/EX Pipeline Register | EX stage mux and pipeline stage boundary | Varun
+| EX/MEM Register + MEM Stage | Data memory and load/store extension | Soham
+| MEM/WB Register + Write-Back | Result mux and register file write path | Aadi
+| Hazard Detection + Forwarding Unit | Stall/flush generation and EX-EX/MEM-EX forwarding paths | Dev
+| Verification and Testbench | Unit and integration testbenches, test programs | Krishna + Parhawk
 
 ---
