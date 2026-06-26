@@ -1,88 +1,116 @@
+// =============================================================================
+// alu.v — 32-bit RV32I ALU
+// Owners  : Anirudh + Dev
+// Stage   : EX (purely combinational, no clock)
+// Spec ref: rv32i_top_spec.md §6.4 | README §rtl/ex_stage/alu.v
+//
+// Inputs
+// ------
+//   operand_a [31:0] : rs1 data (after forwarding mux)
+//   operand_b [31:0] : rs2 data or sign-extended immediate (after src mux)
+//   ALUControl [3:0] : operation select from alu_decoder.v
+//
+// Outputs
+// -------
+//   result   [31:0] : computed value
+//   Zero            : result == 0   (used by branch_unit for BEQ/BNE)
+//   Negative        : result[31]    (MSB of signed result, used for BLT/BGE)
+//   Carry           : unsigned carry-out of bit 31 (used for BLTU/BGEU)
+//   Overflow        : signed two's-complement overflow (used for BLT/BGE)
+//
+// Flag semantics (two's complement signed)
+// -----------------------------------------
+//   BEQ  : Zero
+//   BNE  : ~Zero
+//   BLT  : Negative ^ Overflow          (signed less-than after SUB)
+//   BGE  : ~(Negative ^ Overflow)
+//   BLTU : ~Carry                       (borrow = ~carry for unsigned SUB)
+//   BGEU : Carry
+//
+// ALUControl encoding (matches rv32i_top_spec.md §7.1)
+//   4'b0000  ADD
+//   4'b0001  SUB
+//   4'b0010  AND
+//   4'b0011  OR
+//   4'b0100  XOR
+//   4'b0101  SLL
+//   4'b0110  SRL
+//   4'b0111  SRA
+//   4'b1000  SLT   (signed)
+//   4'b1001  SLTU  (unsigned)
+//   4'b1010  PASS_B (LUI: rd = U-imm)
+//   4'b1111  NOP   (output 0)
+// =============================================================================
+
 module alu (
-    input  wire [31:0] a,
-    input  wire [31:0] b,
-    input  wire [3:0]  alu_ctrl,
+    input  wire [31:0] operand_a,
+    input  wire [31:0] operand_b,
+    input  wire [3:0]  ALUControl,
+
     output reg  [31:0] result,
-    output wire        zero,
-    output wire        neg,
-    output reg         carry,
-    output reg         overflow
+    output wire        Zero,
+    output wire        Negative,
+    output wire        Carry,
+    output wire        Overflow
 );
 
-    localparam ALU_ADD  = 4'b0000;
-    localparam ALU_SUB  = 4'b1000;
-    localparam ALU_SLL  = 4'b0001;
-    localparam ALU_SLT  = 4'b0010;
-    localparam ALU_SLTU = 4'b0011;
-    localparam ALU_XOR  = 4'b0100;
-    localparam ALU_SRL  = 4'b0101;
-    localparam ALU_SRA  = 4'b1101;
-    localparam ALU_OR   = 4'b0110;
-    localparam ALU_AND  = 4'b0111;
+    // -------------------------------------------------------------------------
+    // Adder / Subtractor — shared by ADD, SUB, SLT, SLTU, and branch compares
+    // Use a 33-bit adder: bit 32 is the carry-out.
+    // For SUB: compute A + (~B) + 1  (two's complement negation)
+    // -------------------------------------------------------------------------
+    wire        do_sub;
+    wire [32:0] adder_a;
+    wire [32:0] adder_b;
+    wire [32:0] adder_result;
 
-    wire [32:0] add_result;
-    assign add_result = {1'b0, a} + {1'b0, b};
+    assign do_sub       = (ALUControl == 4'b0001) ||   // SUB
+                          (ALUControl == 4'b1000) ||   // SLT
+                          (ALUControl == 4'b1001);     // SLTU
 
-    wire [32:0] sub_result;
-    assign sub_result = {1'b0, a} + {1'b0, ~b} + 33'd1;
+    assign adder_a      = {1'b0, operand_a};
+    assign adder_b      = do_sub ? {1'b0, ~operand_b} : {1'b0, operand_b};
+    assign adder_result = adder_a + adder_b + (do_sub ? 33'd1 : 33'd0);
 
+    // Signed overflow: occurs when the signs of both operands are the same
+    // and the sign of the result differs.
+    wire sum_overflow;
+    assign sum_overflow = (~operand_a[31] & ~adder_b[31] &  adder_result[31]) |
+                          ( operand_a[31] &  adder_b[31] & ~adder_result[31]);
+
+    // -------------------------------------------------------------------------
+    // Shift amount — RV32I uses only the lower 5 bits of operand_b
+    // -------------------------------------------------------------------------
+    wire [4:0] shamt;
+    assign shamt = operand_b[4:0];
+
+    // -------------------------------------------------------------------------
+    // Result mux
+    // -------------------------------------------------------------------------
     always @(*) begin
-        result   = 32'd0;
-        carry    = 1'b0;
-        overflow = 1'b0;
-
-        case (alu_ctrl)
-            ALU_ADD: begin
-                result   = add_result[31:0];
-                carry    = add_result[32];
-                overflow = (a[31] == b[31]) && (result[31] != a[31]);
-            end
-
-            ALU_SUB: begin
-                result   = sub_result[31:0];
-                carry    = sub_result[32];
-                overflow = (a[31] != b[31]) && (result[31] == b[31]);
-            end
-
-            ALU_SLL: begin
-                result = a << b[4:0];
-            end
-
-            ALU_SLT: begin
-                result = ($signed(a) < $signed(b)) ? 32'd1 : 32'd0;
-            end
-
-            ALU_SLTU: begin
-                result = (a < b) ? 32'd1 : 32'd0;
-            end
-
-            ALU_XOR: begin
-                result = a ^ b;
-            end
-
-            ALU_SRL: begin
-                result = a >> b[4:0];
-            end
-
-            ALU_SRA: begin
-                result = $signed(a) >>> b[4:0];
-            end
-
-            ALU_OR: begin
-                result = a | b;
-            end
-
-            ALU_AND: begin
-                result = a & b;
-            end
-
-            default: begin
-                result = a + b;
-            end
+        case (ALUControl)
+            4'b0000: result = adder_result[31:0];                    // ADD
+            4'b0001: result = adder_result[31:0];                    // SUB
+            4'b0010: result = operand_a & operand_b;                 // AND
+            4'b0011: result = operand_a | operand_b;                 // OR
+            4'b0100: result = operand_a ^ operand_b;                 // XOR
+            4'b0101: result = operand_a << shamt;                    // SLL
+            4'b0110: result = operand_a >> shamt;                    // SRL (logical)
+            4'b0111: result = $signed(operand_a) >>> shamt;          // SRA (arithmetic)
+            4'b1000: result = {31'b0, sum_overflow ^ adder_result[31]}; // SLT  (signed)
+            4'b1001: result = {31'b0, ~adder_result[32]};            // SLTU (unsigned borrow)
+            4'b1010: result = operand_b;                             // PASS_B (LUI)
+            4'b1111: result = 32'h0;                                 // NOP
+            default: result = 32'h0;
         endcase
     end
 
-    assign zero = (result == 32'd0);
-    assign neg  = result[31];
+    // -------------------------------------------------------------------------
+    // Flag outputs (driven from the shared adder and result)
+    // -------------------------------------------------------------------------
+    assign Zero     = (result == 32'h0);
+    assign Negative = result[31];
+    assign Carry    = adder_result[32];      // unsigned carry-out
+    assign Overflow = sum_overflow;
 
 endmodule
