@@ -26,6 +26,7 @@ module riscv_top (
 
     wire        stall;          // Freeze PC + IF/ID; bubble into ID/EX
     wire        flush;          // Squash IF/ID + ID/EX on taken branch
+    wire        hz_flush_unused; // hazard_unit flush output (unused; branch_taken drives flush)
     wire [1:0]  fwd_a_sel;     // Forwarding mux for ALU operand A
     wire [1:0]  fwd_b_sel;     // Forwarding mux for ALU operand B
 
@@ -109,6 +110,7 @@ module riscv_top (
     wire [1:0]  mem_to_reg_D;
     wire        branch_D;
     wire        jump_D;
+    wire        auipc_D;
 
     control_unit CTRL (
         .opcode     (opcode),
@@ -121,7 +123,8 @@ module riscv_top (
         .mem_write  (mem_write_D),
         .mem_to_reg (mem_to_reg_D),
         .branch     (branch_D),
-        .jump       (jump_D)
+        .jump       (jump_D),
+        .auipc      (auipc_D)
     );
 
     // --- Register file read (write port driven from WB below) ---
@@ -165,6 +168,7 @@ module riscv_top (
     reg        idex_branch;
     reg        idex_jump;
     reg [2:0]  idex_funct3;
+    reg        idex_auipc;
 
     always @(posedge clk) begin
         if (rst || flush) begin
@@ -186,7 +190,19 @@ module riscv_top (
             idex_branch     <= 1'b0;
             idex_jump       <= 1'b0;
             idex_funct3     <= 3'h0;
-        end else if (!stall) begin
+            idex_auipc      <= 1'b0;
+        end else if (stall) begin
+            // Load-use stall: freeze IF/ID and PC, inject NOP bubble into EX.
+            // Data fields are don't-care; killing control signals is enough.
+            idex_alu_op     <= 4'hF;
+            idex_reg_write  <= 1'b0;
+            idex_mem_read   <= 1'b0;
+            idex_mem_write  <= 1'b0;
+            idex_branch     <= 1'b0;
+            idex_jump       <= 1'b0;
+            idex_mem_to_reg <= 2'b00;
+            idex_auipc      <= 1'b0;
+        end else begin
             idex_pc         <= ifid_pc;
             idex_pc_plus4   <= ifid_pc_plus4;
             idex_rs1_data   <= rf_rdata1_D;
@@ -204,8 +220,8 @@ module riscv_top (
             idex_branch     <= branch_D;
             idex_jump       <= jump_D;
             idex_funct3     <= funct3;
+            idex_auipc      <= auipc_D;
         end
-        // stall: hold (no else branch needed)
     end
 
 // =============================================================================
@@ -232,6 +248,10 @@ module riscv_top (
                            (fwd_b_sel == 2'b10) ? wb_wdata          :
                                                   idex_rs2_data;
 
+    // AUIPC: rd = PC + U-imm, so operand_a must be the pipelined PC
+    wire [31:0] alu_operand_a;
+    assign alu_operand_a = idex_auipc ? idex_pc : fwd_src_a;
+
     // ALU src B mux: register data vs immediate (spec §5.2 idex_alu_src)
     wire [31:0] alu_operand_b;
     assign alu_operand_b = idex_alu_src ? idex_imm : fwd_src_b_pre;
@@ -241,11 +261,11 @@ module riscv_top (
     wire        alu_zero_E;
 
     alu ALU (
-        .operand_a (fwd_src_a),
-        .operand_b (alu_operand_b),
-        .alu_op    (idex_alu_op),
-        .result    (alu_result_E),
-        .zero      (alu_zero_E)
+        .operand_a  (alu_operand_a),
+        .operand_b  (alu_operand_b),
+        .ALUControl (idex_alu_op),
+        .result     (alu_result_E),
+        .Zero       (alu_zero_E)
     );
 
     // --- Branch and Jump Unit (spec §6.6) ---
@@ -258,9 +278,13 @@ module riscv_top (
         .funct3       (idex_funct3),
         .branch       (idex_branch),
         .jump         (idex_jump),
+        .alu_src      (idex_alu_src),
         .branch_taken (branch_taken),
         .branch_target(branch_target)
     );
+
+    // Control hazard flush: flush IF/ID and ID/EX whenever a branch/jump is taken
+    assign flush = branch_taken;
 
 // =============================================================================
 // 6.  EX/MEM PIPELINE REGISTER  (spec §5.3)
@@ -318,6 +342,7 @@ module riscv_top (
 // =============================================================================
 
     wire [31:0] mem_rdata_M;
+    wire [31:0] mem_rdata_ext_M;
 
     data_mem DMEM (
         .clk       (clk),
@@ -327,6 +352,12 @@ module riscv_top (
         .mem_write (exmem_mem_write),
         .funct3    (exmem_funct3),
         .rdata     (mem_rdata_M)
+    );
+
+    load_extend LEXT (
+        .mem_rdata (mem_rdata_M),
+        .funct3    (exmem_funct3),
+        .ext_data  (mem_rdata_ext_M)
     );
 
 // =============================================================================
@@ -356,7 +387,7 @@ module riscv_top (
             memwb_mem_to_reg_r  <= 2'b00;
         end else begin
             memwb_alu_result_r  <= exmem_alu_result;
-            memwb_mem_data_r    <= mem_rdata_M;
+            memwb_mem_data_r    <= mem_rdata_ext_M;
             memwb_pc_plus4_r    <= exmem_pc_plus4;
             memwb_rd_addr_r     <= exmem_rd_addr;
             memwb_reg_write_r   <= exmem_reg_write;
@@ -382,8 +413,10 @@ module riscv_top (
 // =============================================================================
 
     hazard_unit HAZARD (
-        .idex_rs1_addr  (idex_rs1_addr),
-        .idex_rs2_addr  (idex_rs2_addr),
+        .ifid_rs1_addr  (rs1_addr_D),       // ID stage instruction's rs1 (for stall)
+        .ifid_rs2_addr  (rs2_addr_D),       // ID stage instruction's rs2 (for stall)
+        .idex_rs1_addr  (idex_rs1_addr),    // EX stage instruction's rs1 (for forwarding)
+        .idex_rs2_addr  (idex_rs2_addr),    // EX stage instruction's rs2 (for forwarding)
         .idex_rd_addr   (idex_rd_addr),
         .idex_mem_read  (idex_mem_read),
         .exmem_rd_addr  (exmem_rd_addr),
@@ -391,7 +424,7 @@ module riscv_top (
         .memwb_rd_addr  (memwb_rd_addr_r),
         .memwb_reg_write(memwb_reg_write_r),
         .stall          (stall),
-        .flush          (flush),
+        .flush          (hz_flush_unused),
         .fwd_a_sel      (fwd_a_sel),
         .fwd_b_sel      (fwd_b_sel)
     );
@@ -406,21 +439,4 @@ module riscv_top (
     assign tb_reg_wb_addr = wb_rd_addr;
     assign tb_reg_wb_en   = wb_reg_write;
 
-endmodule
-
-// =============================================================================
-// PC Register — simple enable-stall register
-// =============================================================================
-module pc_reg (
-    input  wire        clk,
-    input  wire        rst,
-    input  wire        en,
-    input  wire [31:0] pc_next,
-    output reg  [31:0] pc
-);
-    always @(posedge clk) begin
-        if (rst)    pc <= 32'h0;
-        else if (en) pc <= pc_next;
-        // en == 0: hold (stall)
-    end
 endmodule
