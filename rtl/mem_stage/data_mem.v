@@ -1,149 +1,136 @@
 // Contributor: Soham Sawant
-//=============================================================================
-// rtl/mem_stage/data_mem.v
-// "The Data Memory – where loads and stores really happen"
 // =============================================================================
+// rtl/mem_stage/data_mem.v — Parameterised Byte‑Addressable Data Memory
+// =========================================================================
 //
-// This is a small, synchronous RAM that can read/write bytes, halfwords,
-// and whole words.  Think of it like a tiny scratchpad that the CPU can
-// peek at and poke into.
+// This is the data memory (RAM) of the processor.  It handles all load and
+// store instructions:  LB, LH, LW, LBU, LHU, SB, SH, SW.
 //
-// A few design choices we made:
-//   – The read is COMBINATIONAL.  As soon as the address or control changes,
-//     the data appears on 'rdata'.  This saves a clock cycle for loads.
-//   – The write is SYNCHRONOUS.  Data is actually stored only on the rising
-//     edge of the clock, when 'mem_write' is high.
-//   – It only handles aligned accesses.  We assume the program never asks for
-//     a halfword from address 0x13, for example – but even if it does, the
-//     hardware won't crash; it will just treat the address as if it were aligned.
-//   – The memory is 2048 bytes deep (512 words).  That’s enough for small
-//     test programs like Fibonacci or bubble sort.
+// MEMORY SIZE
+//   The number of 32‑bit words is controlled by the parameter DEPTH.
+//   Default = 512 words (2048 bytes = 2 KB).  To change the size, just
+//   override DEPTH when you instantiate this module – no internal code
+//   changes are needed.  The address width is calculated automatically
+//   from DEPTH using $clog2 (the ceiling‑of‑log2 function).
 //
-// Byte ordering is little‑endian.  Byte 0 is the least significant byte of a
-// word.  That's the RISC‑V standard, so we follow it religiously.
+//   Example:  data_mem #(.DEPTH(1024)) DMEM (...);  // 4 KB memory
+//
+// READ / WRITE BEHAVIOUR
+//   Read  – combinational.  As soon as the address or control signals
+//           change, the data appears on 'rdata'.  This saves a clock cycle
+//           for loads and is the standard design for single‑cycle memory.
+//   Write – synchronous.  Data is stored only on the rising edge of the
+//           clock when mem_write is high.
+//
+// ACCESS SIZES
+//   The funct3[1:0] bits decide the access width:
+//     00 → byte
+//     01 → halfword (2 bytes)
+//     10 → word (4 bytes)
+//   The funct3[2] bit distinguishes signed/unsigned loads, but that is
+//   handled later by the load_extend module.  Here we always zero‑extend
+//   the upper bits of the read data.
+//
+//   Only aligned accesses are expected (word at address multiple of 4,
+//   halfword at even address).  The hardware does not crash on misaligned
+//   addresses, but it will select the wrong halfword if the address is odd.
+//
+// BYTE ORDER
+//   Little‑endian (RISC‑V standard).  Byte 0 is the least significant byte.
+//   Halfword at offset 0 uses bits 15..0; halfword at offset 2 uses bits
+//   31..16.
+//
+// PARAMETERISATION
+//   DEPTH   : number of 32‑bit words (default 512)
+//   The internal address bus word_addr is automatically sized to
+//   [ADDR_WIDTH‑1:0], where ADDR_WIDTH = $clog2(DEPTH).
+//   The byte offset (addr[1:0]) is always 2 bits.
 // =============================================================================
 
-module data_mem (
-    input  wire        clk,        // The heartbeat of the CPU
-    input  wire [31:0] addr,       // Byte address we want to access
-    input  wire [31:0] wdata,      // Data to write (for store instructions)
-    input  wire        mem_read,   // '1' when we are doing a load
-    input  wire        mem_write,  // '1' when we are doing a store
-    input  wire [2:0]  funct3,     // Tells us the size and signedness of the access
-    output wire [31:0] rdata       // Data that comes out during a load
+module data_mem #(
+    parameter DEPTH = 512                     // words in memory (power‑of‑2 recommended)
+) (
+    input  wire        clk,                   // Global clock
+    input  wire [31:0] addr,                  // Byte address (from ALU result)
+    input  wire [31:0] wdata,                 // Data to store (from rs2 after forwarding)
+    input  wire        mem_read,              // Load enable (1 = we are reading)
+    input  wire        mem_write,             // Store enable (1 = we are writing)
+    input  wire [2:0]  funct3,                // funct3 field (size + signedness)
+    output wire [31:0] rdata                  // Read data (combinational)
 );
 
-    // ----- The actual storage -------------------------------------------------
-    // 512 words of 32 bits each.  This is the heart of the memory.
-    reg [31:0] mem [0:511];        // 512 entries, each 32 bits wide
+    // ----- Auto‑compute the number of address bits -----
+    localparam ADDR_WIDTH = $clog2(DEPTH);    // e.g. DEPTH=512 → 9 bits
 
-    // ----- Address decoding ---------------------------------------------------
-    // A byte address can be split into two pieces:
-    //   word_addr   = which 32‑bit word we are touching
-    //   byte_offset = which byte (or halfword) inside that word we want
-    wire [8:0]  word_addr   = addr[10:2];   // 9 bits → 512 words
-    wire [1:0]  byte_offset = addr[1:0];    // 2 bits → 0..3
+    // ----- The actual storage array -----
+    reg [31:0] mem [0:DEPTH-1];
+
+    // ----- Split the byte address into word index and byte lane -----
+    //       word_addr   = which 32‑bit word we are accessing
+    //       byte_offset = which byte inside that word (0, 1, 2, 3)
+    wire [ADDR_WIDTH-1:0] word_addr   = addr[ADDR_WIDTH+1:2];
+    wire [1:0]            byte_offset = addr[1:0];
 
     // ==========================================================================
     // READ PATH (combinational)
     // ==========================================================================
-    // For loads, the CPU wants the data immediately.  We don't wait for a clock.
-    // We always read the whole 32‑bit word and then pick the relevant bytes.
-    // The 'load_extend' module later will decide whether to keep the upper bits
-    // as zeros or to sign‑extend them (for LBU vs. LB, etc.).
+    // For loads, we always read a full 32‑bit word, then extract the
+    // required bytes/halfword.  The upper bits are zeroed.  Later,
+    // load_extend.v will sign‑extend them for LB/LH if needed.
     // ==========================================================================
-
-    reg [31:0] rd_pre;      // temporary signal that holds the raw read result
+    reg [31:0] rd_pre;                         // temporary raw read result
 
     always @(*) begin
-        // Start with all zeros – a clean slate
-        rd_pre = 32'h0;
-
-        // funct3[1:0] determines the access size:
-        //   00 → byte
-        //   01 → halfword
-        //   10 → word
-        // The third bit (funct3[2]) only matters for sign‑extension,
-        // which is handled later in load_extend.  So we ignore it here.
-        case (funct3[1:0])
-
-            2'b00: begin
-                // ---- Byte load ----
-                // Extract exactly one byte from the word.
-                // The byte is chosen by 'byte_offset'.
-                // For example, if byte_offset is 2, we take the third byte (bits 23:16)
-                // and put it into the lowest 8 bits of rd_pre.
+        rd_pre = 32'h0;                        // start clean (safety for undefined cases)
+        case (funct3[1:0])                     // only care about access size
+            2'b00: begin                       // Byte load
+                // Pick one byte from the word, using byte_offset as index.
+                // Syntax [base +: width] selects a bit‑slice of 8 bits.
                 rd_pre[7:0] = mem[word_addr][byte_offset*8 +: 8];
             end
-
-            2'b01: begin
-                // ---- Halfword load ----
-                // A halfword is 2 bytes.  The alignment rule says:
-                //   - if address bit 1 is 0 → take the lower half (bits 15:0)
-                //   - if address bit 1 is 1 → take the upper half (bits 31:16)
-                // We use byte_offset[1] as the selector.
+            2'b01: begin                       // Halfword load
+                // A halfword is 2 bytes.  Address bit 1 tells us which half.
+                // byte_offset[1] == 0 → lower half (bits 15..0)
+                // byte_offset[1] == 1 → upper half (bits 31..16)
                 if (byte_offset[1] == 1'b0)
-                    rd_pre[15:0] = mem[word_addr][15:0];   // lower half
+                    rd_pre[15:0] = mem[word_addr][15:0];
                 else
-                    rd_pre[15:0] = mem[word_addr][31:16];  // upper half
+                    rd_pre[15:0] = mem[word_addr][31:16];
             end
-
-            2'b10: begin
-                // ---- Word load ----
-                // Just pass the whole word through.  Easy.
+            2'b10: begin                       // Word load
                 rd_pre = mem[word_addr];
             end
-
-            default: begin
-                // Should never happen, but just in case, drive zero.
-                rd_pre = 32'h0;
-            end
+            default: rd_pre = 32'h0;           // Should never happen
         endcase
     end
 
-    // The final output of the memory is the raw (zero‑extended) value.
-    // load_extend will take care of sign‑extension later.
-    assign rdata = rd_pre;
+    assign rdata = rd_pre;                     // Drive the output
 
     // ==========================================================================
     // WRITE PATH (synchronous)
     // ==========================================================================
-    // Stores only happen on the rising edge of clk, and only when mem_write = 1.
-    // We must write ONLY the bytes that the instruction intends to modify.
-    // All other bytes in the same word must stay unchanged, otherwise we'd
-    // corrupt data that the program stored earlier.
+    // Stores happen on the rising clock edge.  We must write ONLY the bytes
+    // that the instruction intends to change.  All other bytes in the same
+    // word stay untouched – otherwise we’d corrupt other data.
     // ==========================================================================
-
     always @(posedge clk) begin
         if (mem_write) begin
-            // Same access size decoding as for reads
             case (funct3[1:0])
-
-                2'b00: begin
-                    // ---- Store byte ----
+                2'b00: // Store byte
                     // Replace only the addressed byte lane.
-                    // The other three bytes are left untouched.
                     mem[word_addr][byte_offset*8 +: 8] <= wdata[7:0];
-                end
-
-                2'b01: begin
-                    // ---- Store halfword ----
-                    // Write either the lower or upper 16 bits of the word,
-                    // again using address bit 1 as the selector.
+                2'b01: // Store halfword
+                    // Write either the lower or upper 16 bits of the word.
                     if (byte_offset[1] == 1'b0)
-                        mem[word_addr][15:0]  <= wdata[15:0];  // lower half
+                        mem[word_addr][15:0]  <= wdata[15:0];
                     else
-                        mem[word_addr][31:16] <= wdata[15:0];  // upper half
-                end
-
-                2'b10: begin
-                    // ---- Store word ----
+                        mem[word_addr][31:16] <= wdata[15:0];
+                2'b10: // Store word
                     // Overwrite the entire 32‑bit word.
                     mem[word_addr] <= wdata;
-                end
-
-                // default: no write (safety net)
+                // default: no store (safety)
             endcase
         end
     end
+
 endmodule
