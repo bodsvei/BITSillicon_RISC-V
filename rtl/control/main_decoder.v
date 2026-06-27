@@ -38,7 +38,8 @@ module main_decoder (
     output reg        Branch,
     output reg        Jump,
     output reg [1:0]  ResultSrc,
-    output reg [2:0]  ImmSrc
+    output reg [2:0]  ImmSrc,
+    output reg        AuiPC   // 1 for AUIPC: ALU operand_a must be PC, not rs1
 );
 
     // RV32I opcode map (spec vol I §2.2)
@@ -63,6 +64,7 @@ module main_decoder (
         Jump      = 1'b0;
         ResultSrc = 2'b00;
         ImmSrc    = 3'b000;
+        AuiPC     = 1'b0;
 
         case (opcode)
 
@@ -135,12 +137,12 @@ module main_decoder (
             end
 
             OP_AUIPC: begin
-                // rd = PC + U-immediate
-                // branch_unit computes this; ALU result carries it
+                // rd = PC + U-immediate; ALU computes ADD with operand_a = PC
                 RegWrite  = 1'b1;
                 ALUSrc    = 1'b1;
                 ResultSrc = 2'b00;
                 ImmSrc    = 3'b011; // U-type immediate
+                AuiPC     = 1'b1;   // signal EX to use idex_pc as operand_a
             end
 
             OP_SYSTEM: begin

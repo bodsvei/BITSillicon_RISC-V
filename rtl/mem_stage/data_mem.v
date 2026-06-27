@@ -43,7 +43,7 @@
 // PARAMETERISATION
 //   DEPTH   : number of 32‑bit words (default 512)
 //   The internal address bus word_addr is automatically sized to
-//   [ADDR_WIDTH‑1:0], where ADDR_WIDTH = $clog2(DEPTH).
+//   [ADDR_BITS‑1:0], where ADDR_BITS = $clog2(DEPTH).
 //   The byte offset (addr[1:0]) is always 2 bits.
 // =============================================================================
 
@@ -59,17 +59,14 @@ module data_mem #(
     output wire [31:0] rdata                  // Read data (combinational)
 );
 
-    // ----- Auto‑compute the number of address bits -----
-    localparam ADDR_WIDTH = $clog2(DEPTH);    // e.g. DEPTH=512 → 9 bits
+    localparam ADDR_BITS = $clog2(DEPTH);
 
-    // ----- The actual storage array -----
+    // ----- The actual storage -------------------------------------------------
     reg [31:0] mem [0:DEPTH-1];
 
-    // ----- Split the byte address into word index and byte lane -----
-    //       word_addr   = which 32‑bit word we are accessing
-    //       byte_offset = which byte inside that word (0, 1, 2, 3)
-    wire [ADDR_WIDTH-1:0] word_addr   = addr[ADDR_WIDTH+1:2];
-    wire [1:0]            byte_offset = addr[1:0];
+    // ----- Address decoding ---------------------------------------------------
+    wire [ADDR_BITS-1:0] word_addr   = addr[ADDR_BITS+1:2];
+    wire [1:0]           byte_offset = addr[1:0];
 
     // ==========================================================================
     // READ PATH (combinational)

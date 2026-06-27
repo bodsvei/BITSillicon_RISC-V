@@ -1,76 +1,49 @@
-// ============================================================
-// Module      : branch_unit
-// File        : rtl/ex_stage/branch_unit.v
-// Project     : BITSilicon RV32I 5-Stage Pipelined RISC-V Processor
-// Contributor : Aparna
-// ============================================================
-//
-// Description:
-//   Handles all branch and jump decisions in the EX stage.
-//   Answers two questions every time a branch/jump is encountered:
-//     1. Should we jump?      → output: PCSrc (0 or 1)
-//     2. Where do we jump to? → output: PCTarget (32-bit address)
-//
-// Instructions handled:
-//   BEQ, BNE, BLT, BGE, BLTU, BGEU  (conditional branches)
-//   JAL                               (unconditional jump, PC-relative)
-//   JALR                              (unconditional jump, register-relative)
-//
-// How it works:
-//   - reads funct3 to identify which branch type it is
-//   - reads ALU flags (N, Z, C, V) to evaluate the condition
-//   - computes correct target address based on instruction type
-//   - sends PCSrc + PCTarget back to IF stage
-//
-// Position in pipeline:
-//   IF → ID → EX (here) → MEM → WB
-// ============================================================
-
 module branch_unit (
-    input wire        Branch,
-    input wire        Jump,
-    input wire        is_jalr,
-    input wire [2:0]  funct3,
-    input wire [3:0]  ALUFlags,
-    input wire [31:0] PC,
-    input wire [31:0] rs1,
-    input wire [31:0] B_imm,
-    input wire [31:0] J_imm,
-    input wire [31:0] I_imm,
-    output reg        PCSrc,
-    output reg [31:0] PCTarget
+    input  wire [31:0] rs1_data,
+    input  wire [31:0] rs2_data,
+    input  wire [31:0] pc,
+    input  wire [31:0] pc_plus4,
+    input  wire [31:0] imm,
+    input  wire [2:0]  funct3,
+    input  wire        branch,
+    input  wire        jump,
+    input  wire        alu_src,   // 1 = JALR (rs1+imm), 0 = JAL (pc+imm)
+    output reg         branch_taken,
+    output reg  [31:0] branch_target
 );
+    wire signed_lt  = ($signed(rs1_data) < $signed(rs2_data));
+    wire unsigned_lt = (rs1_data < rs2_data);
+    wire eq          = (rs1_data == rs2_data);
 
-    wire N = ALUFlags[3];
-    wire Z = ALUFlags[2];
-    wire C = ALUFlags[1];
-    wire V = ALUFlags[0];
-
-    reg BranchTaken;
-
+    reg cond;
     always @(*) begin
         case (funct3)
-            3'b000: BranchTaken = Z;
-            3'b001: BranchTaken = ~Z;
-            3'b100: BranchTaken = N ^ V;
-            3'b101: BranchTaken = ~(N ^ V);
-            3'b110: BranchTaken = ~C;
-            3'b111: BranchTaken = C;
-            default: BranchTaken = 1'b0;
+            3'b000: cond = eq;           // BEQ
+            3'b001: cond = !eq;          // BNE
+            3'b100: cond = signed_lt;    // BLT
+            3'b101: cond = !signed_lt;   // BGE
+            3'b110: cond = unsigned_lt;  // BLTU
+            3'b111: cond = !unsigned_lt; // BGEU
+            default: cond = 1'b0;
         endcase
     end
 
-    always @(*) begin
-        PCSrc = (Branch & BranchTaken) | Jump;
-    end
+    wire [31:0] jalr_target = rs1_data + imm;
 
     always @(*) begin
-        if (is_jalr)
-            PCTarget = (rs1 + I_imm) & 32'hFFFFFFFE;
-        else if (Jump)
-            PCTarget = PC + J_imm;
-        else
-            PCTarget = PC + B_imm;
+        if (jump) begin
+            branch_taken  = 1'b1;
+            if (alu_src)
+                branch_target = {jalr_target[31:1], 1'b0}; // JALR: rs1+imm, lsb=0
+            else
+                branch_target = pc + imm;                    // JAL: pc+imm
+        end else if (branch && cond) begin
+            branch_taken  = 1'b1;
+            branch_target = pc + imm;
+        end else begin
+            branch_taken  = 1'b0;
+            branch_target = pc_plus4;
+        end
     end
 
 endmodule
