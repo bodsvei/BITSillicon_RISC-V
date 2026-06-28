@@ -8,35 +8,33 @@
 module tb_branch_unit;
 
     // inputs to branch_unit (we control these)
-    reg        Branch;
-    reg        Jump;
-    reg        is_jalr;
+    reg [31:0] rs1_data;
+    reg [31:0] rs2_data;
+    reg [31:0] pc;
+    reg [31:0] pc_plus4;
+    reg [31:0] imm;
     reg [2:0]  funct3;
-    reg [3:0]  ALUFlags;
-    reg [31:0] PC;
-    reg [31:0] rs1;
-    reg [31:0] B_imm;
-    reg [31:0] J_imm;
-    reg [31:0] I_imm;
+    reg        branch;
+    reg        jump;
+    reg        alu_src;
 
     // outputs from branch_unit (we just observe these)
-    wire        PCSrc;
-    wire [31:0] PCTarget;
+    wire        branch_taken;
+    wire [31:0] branch_target;
 
     // connect testbench to your module
     branch_unit uut (
-        .Branch  (Branch),
-        .Jump    (Jump),
-        .is_jalr (is_jalr),
-        .funct3  (funct3),
-        .ALUFlags(ALUFlags),
-        .PC      (PC),
-        .rs1     (rs1),
-        .B_imm   (B_imm),
-        .J_imm   (J_imm),
-        .I_imm   (I_imm),
-        .PCSrc   (PCSrc),
-        .PCTarget(PCTarget)
+        .rs1_data     (rs1_data),
+        .rs2_data     (rs2_data),
+        .pc           (pc),
+        .pc_plus4     (pc_plus4),
+        .imm          (imm),
+        .funct3       (funct3),
+        .branch       (branch),
+        .jump         (jump),
+        .alu_src      (alu_src),
+        .branch_taken (branch_taken),
+        .branch_target(branch_target)
     );
 
     initial begin
@@ -44,58 +42,67 @@ module tb_branch_unit;
         $display("   Branch Unit Test Cases    ");
         $display("=============================");
 
-        Branch=0; Jump=0; is_jalr=0;
-        funct3=0; ALUFlags=0;
-        PC=0; rs1=0; B_imm=0; J_imm=0; I_imm=0;
+        branch=0; jump=0; alu_src=0;
+        funct3=0; 
+        pc=0; pc_plus4=0; imm=0; rs1_data=0; rs2_data=0;
         #10;
 
-        Branch=1; Jump=0; is_jalr=0;
+        // TEST 1: BEQ taken
+        branch=1; jump=0; alu_src=0;
         funct3=3'b000;
-        ALUFlags=4'b0100;
-        PC=32'h100;
-        B_imm=32'h8;
+        rs1_data=32'd10; rs2_data=32'd10; // equal
+        pc=32'h100;
+        imm=32'h8;
         #10;
-        $display("TEST 1 BEQ taken   : PCSrc=%b (want 1), PCTarget=%h (want 108)", PCSrc, PCTarget);
+        $display("TEST 1 BEQ taken   : branch_taken=%b (want 1), branch_target=%h (want 108)", branch_taken, branch_target);
 
-        ALUFlags=4'b0000;
+        // TEST 2: BEQ no take
+        rs2_data=32'd11; // not equal
         #10;
-        $display("TEST 2 BEQ no take : PCSrc=%b (want 0)", PCSrc);
+        $display("TEST 2 BEQ no take : branch_taken=%b (want 0)", branch_taken);
 
+        // TEST 3: BNE taken
         funct3=3'b001;
-        ALUFlags=4'b0000;
+        // rs1=10, rs2=11 -> not equal
         #10;
-        $display("TEST 3 BNE taken   : PCSrc=%b (want 1)", PCSrc);
+        $display("TEST 3 BNE taken   : branch_taken=%b (want 1)", branch_taken);
 
+        // TEST 4: BLT taken
         funct3=3'b100;
-        ALUFlags=4'b1000;
+        rs1_data=-32'd5; rs2_data=32'd2; // -5 < 2
         #10;
-        $display("TEST 4 BLT taken   : PCSrc=%b (want 1)", PCSrc);
+        $display("TEST 4 BLT taken   : branch_taken=%b (want 1)", branch_taken);
 
-        ALUFlags=4'b0000;
+        // TEST 5: BLT no take
+        rs1_data=32'd5; rs2_data=32'd2; // 5 is not < 2
         #10;
-        $display("TEST 5 BLT no take : PCSrc=%b (want 0)", PCSrc);
+        $display("TEST 5 BLT no take : branch_taken=%b (want 0)", branch_taken);
 
-        Branch=0; Jump=1; is_jalr=0;
-        PC=32'h200;
-        J_imm=32'h40;
+        // TEST 6: JAL
+        branch=0; jump=1; alu_src=0; // JAL has alu_src=0
+        pc=32'h200;
+        imm=32'h40;
         #10;
-        $display("TEST 6 JAL         : PCSrc=%b (want 1), PCTarget=%h (want 240)", PCSrc, PCTarget);
+        $display("TEST 6 JAL         : branch_taken=%b (want 1), branch_target=%h (want 240)", branch_taken, branch_target);
 
-        Jump=1; is_jalr=1;
-        rs1=32'hABC;
-        I_imm=32'h4;
+        // TEST 7: JALR
+        jump=1; alu_src=1; // JALR has alu_src=1
+        rs1_data=32'hABC;
+        imm=32'h4;
         #10;
-        $display("TEST 7 JALR        : PCSrc=%b (want 1), PCTarget=%h (want ac0)", PCSrc, PCTarget);
+        $display("TEST 7 JALR        : branch_taken=%b (want 1), branch_target=%h (want ac0)", branch_taken, branch_target);
 
-        rs1=32'hABC;
-        I_imm=32'h3;
+        // TEST 8: JALR align
+        rs1_data=32'hABC;
+        imm=32'h3;
         #10;
-        $display("TEST 8 JALR align  : PCTarget=%h (want abe)", PCTarget);
+        $display("TEST 8 JALR align  : branch_target=%h (want abe)", branch_target);
 
-        Branch=0; Jump=0; is_jalr=0;
-        funct3=3'b000; ALUFlags=4'b0000;
+        // TEST 9: HALT check
+        branch=0; jump=0; alu_src=0;
+        funct3=3'b000; 
         #10;
-        $display("TEST 9 HALT check  : PCSrc=%b (want 0)", PCSrc);
+        $display("TEST 9 HALT check  : branch_taken=%b (want 0)", branch_taken);
 
         $display("=============================");
         $display("        Tests Done!          ");

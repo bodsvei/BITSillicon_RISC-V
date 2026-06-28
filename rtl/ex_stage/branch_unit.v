@@ -1,4 +1,4 @@
- ============================================================
+// ============================================================
 // Module      : branch_unit
 // File        : rtl/ex_stage/branch_unit.v
 // Project     : BITSilicon RV32I 5-Stage Pipelined RISC-V Processor
