@@ -285,8 +285,8 @@ Target utilization is under 5% of Artix-7 LUT resources for the base RV32I datap
 | Sub-project | Description | Contributing
 |---|---|---|
 | Architecture Spec + Top Integration | Top-level design and inter-module interface | Anirudh + Parhawk
-| IF Stage | PC register, instruction memory, IF/ID register | Rohan
-| Instruction Decoder + Immediate Generator | Field extraction and all six RV32I immediate encodings | Vivaan
+| IF Stage | PC register, instruction memory, IF/ID register | Vivaan
+| Instruction Decoder + Immediate Generator | Field extraction and all six RV32I immediate encodings | Rohan
 | Register File | 32x32 register file with two read ports | Abhimanyu
 | Control Unit | Main decoder and ALU control logic | Anirudh
 | ALU | All RV32I arithmetic and logic operations | Dev + Anirudh
