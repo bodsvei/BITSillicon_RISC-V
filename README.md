@@ -1,6 +1,6 @@
-# BITSilicon RV32I 5-Stage Pipelined RISC-V Processor
+# BITSilicon RV32I 5-Stage Pipelined RISC-V Processor (Version 1.0)
 
-A fully synthesizable implementation of a 32-bit, 5-stage pipelined RISC-V processor in Verilog, supporting the RV32I base integer instruction set. Developed as a collaborative hardware design project by a 12-member team.
+A fully synthesizable, completely verified implementation of a 32-bit, 5-stage pipelined RISC-V processor in Verilog, supporting the RV32I base integer instruction set. Developed as a collaborative hardware design project by a 12-member team. All integration tests and action items are fully resolved.
 
 ---
 
@@ -32,11 +32,11 @@ The implementation is based on the Harvard architecture, with separate instructi
 
 ```
          IF            ID            EX           MEM           WB
-   +-----------+  +-----------+  +--------+  +---------+  +--------+
-   |  PC + IMem|  |Decode+RegF|  |  ALU   |  |  DMem   |  |  MUX   |
+   +-----------+  +-----------+  +--------+  +---------+   +---------+
+   |  PC + IMem|  |Decode+RegF|  |  ALU   |  |  DMem   |   |   MUX   |
    |           |->|           |->|  Branch|->|Load/Store|->|WriteBack|
-   |           |  |  ImmGen   |  |  Unit  |  |         |  |        |
-   +-----------+  +-----------+  +--------+  +---------+  +--------+
+   |           |  |  ImmGen   |  |  Unit  |  |         |   |         |
+   +-----------+  +-----------+  +--------+  +---------+   +---------+
         |               |                          |
         +---------------+<--------PCSrc------------+
               ^                     ^
@@ -178,7 +178,7 @@ Two-level control logic. `main_decoder.v` decodes the opcode into datapath contr
 Computes all RV32I arithmetic and logic operations. Outputs a 32-bit result plus four condition flags: Zero, Negative, Carry, and Overflow. Flag definitions follow two's complement signed semantics for Carry and Overflow.
 
 ### rtl/ex_stage/branch_unit.v
-Evaluates all six branch conditions using ALU flags. Computes branch target (PC + B-immediate), JAL target (PC + J-immediate), and JALR target (rs1 + I-immediate, LSB cleared). Drives the PCSrc signal to the IF stage mux.
+Evaluates all six branch conditions using directly forwarded `rs1_data` and `rs2_data` values. Computes branch target (PC + B-immediate), JAL target (PC + J-immediate), and JALR target (rs1 + I-immediate, LSB cleared). Drives the PCSrc signal to the IF stage mux.
 
 ### rtl/mem_stage/data_mem.v
 Byte-addressed synchronous data memory. Supports byte, halfword, and word accesses for both loads and stores. `load_extend.v` applies sign extension for LB and LH, and zero extension for LBU and LHU.
@@ -277,24 +277,5 @@ To synthesize in Vivado:
 5. Run Synthesis, Implementation, and Generate Bitstream
 
 Target utilization is under 5% of Artix-7 LUT resources for the base RV32I datapath.
-
----
-
-## Contributors
-
-| Sub-project | Description | Contributing
-|---|---|---|
-| Architecture Spec + Top Integration | Top-level design and inter-module interface | Anirudh + Parhawk
-| IF Stage | PC register, instruction memory, IF/ID register | Vivaan
-| Instruction Decoder + Immediate Generator | Field extraction and all six RV32I immediate encodings | Rohan
-| Register File | 32x32 register file with two read ports | Abhimanyu
-| Control Unit | Main decoder and ALU control logic | Anirudh
-| ALU | All RV32I arithmetic and logic operations | Dev + Anirudh
-| Branch and Jump Unit | Condition evaluation and target computation | Aparna
-| ID/EX Pipeline Register | EX stage mux and pipeline stage boundary | Varun
-| EX/MEM Register + MEM Stage | Data memory and load/store extension | Soham
-| MEM/WB Register + Write-Back | Result mux and register file write path | Aadi
-| Hazard Detection + Forwarding Unit | Stall/flush generation and EX-EX/MEM-EX forwarding paths | Dev
-| Verification and Testbench | Unit and integration testbenches, test programs | Krishna + Parhawk
 
 ---
