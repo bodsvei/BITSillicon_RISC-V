@@ -1,3 +1,4 @@
+// how are you implemeting it once this opcode is detected, we'll have to see that
 module imm_gen (
     input  wire [31:0] instr,
     output reg  [31:0] imm

@@ -1,6 +1,6 @@
-# BITSilicon RV32I 5-Stage Pipelined RISC-V Processor (Version 1.0)
+# BITSilicon RV32I 5-Stage Pipelined RISC-V Processor
 
-A fully synthesizable, completely verified implementation of a 32-bit, 5-stage pipelined RISC-V processor in Verilog, supporting the RV32I base integer instruction set. Developed as a collaborative hardware design project by a 12-member team. All integration tests and action items are fully resolved.
+A fully synthesizable implementation of a 32-bit, 5-stage pipelined RISC-V processor in Verilog, supporting the RV32I base integer instruction set. Developed as a collaborative hardware design project by a 12-member team.
 
 ---
 
@@ -178,7 +178,7 @@ Two-level control logic. `main_decoder.v` decodes the opcode into datapath contr
 Computes all RV32I arithmetic and logic operations. Outputs a 32-bit result plus four condition flags: Zero, Negative, Carry, and Overflow. Flag definitions follow two's complement signed semantics for Carry and Overflow.
 
 ### rtl/ex_stage/branch_unit.v
-Evaluates all six branch conditions using directly forwarded `rs1_data` and `rs2_data` values. Computes branch target (PC + B-immediate), JAL target (PC + J-immediate), and JALR target (rs1 + I-immediate, LSB cleared). Drives the PCSrc signal to the IF stage mux.
+Evaluates all six branch conditions using ALU flags. Computes branch target (PC + B-immediate), JAL target (PC + J-immediate), and JALR target (rs1 + I-immediate, LSB cleared). Drives the PCSrc signal to the IF stage mux.
 
 ### rtl/mem_stage/data_mem.v
 Byte-addressed synchronous data memory. Supports byte, halfword, and word accesses for both loads and stores. `load_extend.v` applies sign extension for LB and LH, and zero extension for LBU and LHU.
@@ -276,6 +276,6 @@ To synthesize in Vivado:
 4. Set `rtl/top/riscv_top.v` as the top module
 5. Run Synthesis, Implementation, and Generate Bitstream
 
-Target utilization is under 5% of Artix-7 LUT resources for the base RV32I datapath.
+**Target utilization is under 5% of Artix-7 LUT resources for the base RV32I datapath.**
 
 ---
