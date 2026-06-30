@@ -12,6 +12,8 @@ module imm_gen (
     localparam OP_LUI     = 7'b0110111;
     localparam OP_AUIPC   = 7'b0010111;
     localparam OP_JAL     = 7'b1101111;
+    localparam OP_FENCE  = 7'b0001111;
+    localparam OP_SYSTEM = 7'b1110011;
 
     always @(*) begin
         case (opcode)
@@ -33,7 +35,11 @@ module imm_gen (
             // J-type: JAL
             OP_JAL:   imm = {{11{instr[31]}}, instr[31], instr[19:12], instr[20], instr[30:21], 1'b0};
 
-            // R-type: no immediate
+            // FENCE and SYSTEM (ECALL/EBREAK) — treated as NOP, no immediate needed
+            OP_FENCE,
+            OP_SYSTEM: imm = 32'h0;
+
+            // R-type and unknown: no immediate
             default:  imm = 32'h0;
         endcase
     end
