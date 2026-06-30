@@ -59,6 +59,7 @@ module tb_riscv_top;
     always @(posedge clk) begin
         if (!rst) begin
             cycle = cycle + 1;
+            $display("PC=%08X instr=%08X", DUT.pcF, DUT.instrF);
             if (cycle >= MAX_CYCLES) begin
                 $display("TIMEOUT after %0d cycles — stopping", MAX_CYCLES);
                 $finish;
@@ -68,9 +69,14 @@ module tb_riscv_top;
 
     // After enough cycles, read back memory and check fibonacci results
     initial begin
-        // Wait for reset + enough cycles for fibonacci to finish
+        // Wait for reset + enough cycles for fibonacci to finish or HALT
         @(negedge rst);
-        repeat(200) @(posedge clk);
+        while (DUT.instrF !== 32'hFFFFFFFF && cycle < MAX_CYCLES) begin
+            @(posedge clk);
+        end
+        
+        // Wait 4 cycles to let the instructions before HALT finish the pipeline
+        repeat(4) @(posedge clk);
 
         $display("\n--- Fibonacci result check (x1..x10 at mem 0x1000) ---");
         // Read data memory via DUT.DMEM instance

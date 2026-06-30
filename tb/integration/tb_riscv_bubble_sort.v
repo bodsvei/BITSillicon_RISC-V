@@ -56,8 +56,14 @@ module tb_riscv_bubble_sort;
 
     // After enough cycles, verify array is sorted
     initial begin
+        // Wait for reset + enough cycles for sort to finish or HALT
         @(negedge rst);
-        repeat(1500) @(posedge clk);
+        while (DUT.instrF !== 32'hFFFFFFFF && cycle < MAX_CYCLES) begin
+            @(posedge clk);
+        end
+        
+        // Wait 4 cycles to let the instructions before HALT finish the pipeline
+        repeat(4) @(posedge clk);
 
         $display("\n--- Bubble sort result check (8 elements at 0x200) ---");
         begin : check

@@ -178,6 +178,7 @@ def encode(op, args, pc, labels):
 
     # Pseudo-instructions
     if op == 'nop':   return 0x00000013
+    if op == 'halt':  return 0xFFFFFFFF
     if op == 'mv':    return i_type(0, reg(args[1]), 0, reg(args[0]), 0x13)
     if op == 'li':
         v = int(args[1].strip(','), 0)

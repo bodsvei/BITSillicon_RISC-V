@@ -19,4 +19,7 @@ loop:
     add  x12, x13, x0
     jal  x0, loop
 done:
-    jal  x0, done               # halt (self-loop)
+    nop
+    nop
+    nop
+    halt

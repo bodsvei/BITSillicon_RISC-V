@@ -62,8 +62,14 @@ module tb_riscv_factorial;
 
     // After enough cycles, check 7! stored at word address 4 (byte 0x10)
     initial begin
+        // Wait for reset + enough cycles for factorial to finish or HALT
         @(negedge rst);
-        repeat(700) @(posedge clk);
+        while (DUT.instrF !== 32'hFFFFFFFF && cycle < MAX_CYCLES) begin
+            @(posedge clk);
+        end
+        
+        // Wait 4 cycles to let the instructions before HALT finish the pipeline
+        repeat(4) @(posedge clk);
 
         $display("\n--- Factorial result check (7! stored at mem[4] = byte 0x10) ---");
         begin : check

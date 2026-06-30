@@ -32,4 +32,7 @@ fact_ret:
 done:
     addi x15, x0, 16    # address 0x10 = word 4 in data mem
     sw   x11, 0(x15)    # store 7! so testbench can read it
-    jal  x0, done       # halt (self-loop)
+    nop
+    nop
+    nop
+    halt

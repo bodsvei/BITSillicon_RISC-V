@@ -46,4 +46,7 @@ next_outer:
     addi x11, x11, 1
     jal  x0, outer
 done:
-    jal  x0, done               # halt (self-loop)
+    nop
+    nop
+    nop
+    halt
