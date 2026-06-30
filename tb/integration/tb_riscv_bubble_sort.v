@@ -3,31 +3,20 @@
 module tb_riscv_bubble_sort;
 
     parameter CLK_HALF  = 5;
-    parameter MAX_CYCLES = 2000;
+    parameter NUM_INST  = 600; // Approx number of instructions executed
+    parameter TOTAL_CYCLES = (NUM_INST + 4) * 2;
 
     reg  clk = 0;
     reg  rst = 1;
 
-    wire [31:0] tb_pc;
-    wire [31:0] tb_alu_result;
-    wire [31:0] tb_reg_wb_data;
-    wire [4:0]  tb_reg_wb_addr;
-    wire        tb_reg_wb_en;
-
     riscv_top DUT (
         .clk           (clk),
-        .rst           (rst),
-        .tb_pc         (tb_pc),
-        .tb_alu_result (tb_alu_result),
-        .tb_reg_wb_data(tb_reg_wb_data),
-        .tb_reg_wb_addr(tb_reg_wb_addr),
-        .tb_reg_wb_en  (tb_reg_wb_en)
+        .rst           (rst)
     );
     defparam DUT.IMEM.HEX_FILE = "programs/hex/bubble_sort.hex";
 
     always #CLK_HALF clk = ~clk;
 
-    integer cycle  = 0;
     integer errors = 0;
 
     initial begin
@@ -44,26 +33,13 @@ module tb_riscv_bubble_sort;
     end
     `endif
 
-    always @(posedge clk) begin
-        if (!rst) begin
-            cycle = cycle + 1;
-            if (cycle >= MAX_CYCLES) begin
-                $display("TIMEOUT after %0d cycles", MAX_CYCLES);
-                $finish;
-            end
-        end
-    end
-
-    // After enough cycles, verify array is sorted
+    // After computed delay, verify array is sorted
     initial begin
-        // Wait for reset + enough cycles for sort to finish or HALT
+        // Wait for reset
         @(negedge rst);
-        while (DUT.instrF !== 32'hFFFFFFFF && cycle < MAX_CYCLES) begin
-            @(posedge clk);
-        end
         
-        // Wait 4 cycles to let the instructions before HALT finish the pipeline
-        repeat(4) @(posedge clk);
+        // Wait calculated total delay
+        #(CLK_HALF * 2 * TOTAL_CYCLES);
 
         $display("\n--- Bubble sort result check (8 elements at 0x200) ---");
         begin : check

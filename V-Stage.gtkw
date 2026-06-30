@@ -1,0 +1,112 @@
+[*]
+[*] GTKWave Analyzer v3.4.0 (w)1999-2022 BSI
+[*] Tue Jun 30 13:57:04 2026
+[*]
+[dumpfile] "/Users/anirudhsinghair/Documents/GitHub/BITSillicon_RISC-V/dump.vcd"
+[dumpfile_mtime] "Tue Jun 30 13:25:59 2026"
+[dumpfile_size] 27027
+[savefile] "/Users/anirudhsinghair/Documents/GitHub/BITSillicon_RISC-V/V-Stage.gtkw"
+[timestart] 0
+[size] 1710 911
+[pos] -1 0
+*-4.816164 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+[markername] AA
+[markername] BB
+[markername] CC
+[markername] DD
+[markername] EE
+[markername] FF
+[markername] GG
+[markername] HH
+[markername] II
+[markername] JJ
+[markername] KK
+[markername] LL
+[markername] MM
+[markername] NN
+[markername] OO
+[markername] PP
+[markername] QQ
+[markername] RR
+[markername] SS
+[markername] TT
+[markername] UU
+[markername] VV
+[markername] WW
+[markername] XX
+[markername] YY
+[markername] ZZ
+[treeopen] tb_riscv_top.
+[sst_width] 255
+[signals_width] 292
+[sst_expanded] 1
+[sst_vpaned_height] 264
+@29
+tb_riscv_top.DUT.clk
+@28
+tb_riscv_top.DUT.haltF
+@22
+tb_riscv_top.DUT.pcF[31:0]
+tb_riscv_top.DUT.pcNextF[31:0]
+tb_riscv_top.DUT.instrF[31:0]
+@28
+tb_riscv_top.DUT.stall
+@22
+[color] 2
+tb_riscv_top.DUT.ifid_pc[31:0]
+[color] 2
+tb_riscv_top.DUT.ifid_instr[31:0]
+[color] 2
+tb_riscv_top.DUT.idex_rs1_addr[4:0]
+[color] 2
+tb_riscv_top.DUT.idex_rs2_addr[4:0]
+[color] 2
+tb_riscv_top.DUT.idex_rs1_data[31:0]
+[color] 2
+tb_riscv_top.DUT.idex_rs2_data[31:0]
+[color] 2
+tb_riscv_top.DUT.immD[31:0]
+[color] 2
+tb_riscv_top.DUT.alu_op_D[3:0]
+[color] 3
+tb_riscv_top.DUT.idex_pc[31:0]
+[color] 3
+tb_riscv_top.DUT.alu_operand_a[31:0]
+[color] 3
+tb_riscv_top.DUT.alu_operand_b[31:0]
+[color] 3
+tb_riscv_top.DUT.alu_result_E[31:0]
+@28
+[color] 3
+tb_riscv_top.DUT.branch_taken
+@22
+[color] 3
+tb_riscv_top.DUT.branch_target[31:0]
+@28
+[color] 3
+tb_riscv_top.DUT.fwd_a_sel[1:0]
+[color] 3
+tb_riscv_top.DUT.fwd_b_sel[1:0]
+@22
+[color] 5
+tb_riscv_top.DUT.exmem_alu_result_r[31:0]
+[color] 5
+tb_riscv_top.DUT.exmem_rs2_data[31:0]
+@28
+[color] 5
+tb_riscv_top.DUT.exmem_mem_to_reg[1:0]
+[color] 5
+tb_riscv_top.DUT.exmem_mem_read
+[color] 5
+tb_riscv_top.DUT.exmem_mem_write
+@22
+[color] 5
+tb_riscv_top.DUT.mem_rdata_M[31:0]
+tb_riscv_top.DUT.memwb_alu_result_r[31:0]
+tb_riscv_top.DUT.memwb_mem_data_r[31:0]
+tb_riscv_top.DUT.wb_wdata[31:0]
+tb_riscv_top.DUT.wb_rd_addr[4:0]
+@28
+tb_riscv_top.DUT.wb_reg_write
+[pattern_trace] 1
+[pattern_trace] 0

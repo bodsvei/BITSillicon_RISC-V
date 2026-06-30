@@ -11,13 +11,7 @@
 
 module riscv_top (
     input  wire        clk,
-    input  wire        rst,
-    // Debug / testbench observation ports (spec §4)
-    output wire [31:0] tb_pc,
-    output wire [31:0] tb_alu_result,
-    output wire [31:0] tb_reg_wb_data,
-    output wire [4:0]  tb_reg_wb_addr,
-    output wire        tb_reg_wb_en
+    input  wire        rst
 );
 
 // =============================================================================
@@ -428,15 +422,5 @@ module riscv_top (
         .fwd_a_sel      (fwd_a_sel),
         .fwd_b_sel      (fwd_b_sel)
     );
-
-// =============================================================================
-// 11. DEBUG / TESTBENCH PORTS
-// =============================================================================
-
-    assign tb_pc          = pcF;
-    assign tb_alu_result  = alu_result_E;
-    assign tb_reg_wb_data = wb_wdata;
-    assign tb_reg_wb_addr = wb_rd_addr;
-    assign tb_reg_wb_en   = wb_reg_write;
 
 endmodule

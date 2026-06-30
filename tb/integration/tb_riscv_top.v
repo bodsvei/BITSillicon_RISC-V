@@ -3,32 +3,21 @@
 module tb_riscv_top;
 
     parameter CLK_HALF = 5;
-    parameter MAX_CYCLES = 500;
+    parameter NUM_INST = 120; // Approx number of instructions executed
+    parameter TOTAL_CYCLES = (NUM_INST + 4) * 2;
     parameter HEX_FILE = "programs/hex/fibonacci.hex";
 
     reg  clk = 0;
     reg  rst = 1;
 
-    wire [31:0] tb_pc;
-    wire [31:0] tb_alu_result;
-    wire [31:0] tb_reg_wb_data;
-    wire [4:0]  tb_reg_wb_addr;
-    wire        tb_reg_wb_en;
-
     riscv_top DUT (
         .clk           (clk),
-        .rst           (rst),
-        .tb_pc         (tb_pc),
-        .tb_alu_result (tb_alu_result),
-        .tb_reg_wb_data(tb_reg_wb_data),
-        .tb_reg_wb_addr(tb_reg_wb_addr),
-        .tb_reg_wb_en  (tb_reg_wb_en)
+        .rst           (rst)
     );
     defparam DUT.IMEM.HEX_FILE = "programs/hex/fibonacci.hex";
 
     always #CLK_HALF clk = ~clk;
 
-    integer cycle = 0;
     integer errors = 0;
 
     // Hold reset for 2 cycles
@@ -49,34 +38,19 @@ module tb_riscv_top;
 
     // Monitor register writes
     always @(posedge clk) begin
-        if (!rst && tb_reg_wb_en && tb_reg_wb_addr != 0) begin
+        if (!rst && DUT.wb_reg_write && DUT.wb_rd_addr != 0) begin
             $display("[%0t] WB: x%0d = 0x%08X (%0d)",
-                     $time, tb_reg_wb_addr, tb_reg_wb_data, $signed(tb_reg_wb_data));
+                     $time, DUT.wb_rd_addr, DUT.wb_wdata, $signed(DUT.wb_wdata));
         end
     end
 
-    // Cycle counter and timeout
-    always @(posedge clk) begin
-        if (!rst) begin
-            cycle = cycle + 1;
-            $display("PC=%08X instr=%08X", DUT.pcF, DUT.instrF);
-            if (cycle >= MAX_CYCLES) begin
-                $display("TIMEOUT after %0d cycles — stopping", MAX_CYCLES);
-                $finish;
-            end
-        end
-    end
-
-    // After enough cycles, read back memory and check fibonacci results
+    // After computed delay, read back memory and check fibonacci results
     initial begin
-        // Wait for reset + enough cycles for fibonacci to finish or HALT
+        // Wait for reset
         @(negedge rst);
-        while (DUT.instrF !== 32'hFFFFFFFF && cycle < MAX_CYCLES) begin
-            @(posedge clk);
-        end
         
-        // Wait 4 cycles to let the instructions before HALT finish the pipeline
-        repeat(4) @(posedge clk);
+        // Wait calculated total delay
+        #(CLK_HALF * 2 * TOTAL_CYCLES);
 
         $display("\n--- Fibonacci result check (x1..x10 at mem 0x1000) ---");
         // Read data memory via DUT.DMEM instance

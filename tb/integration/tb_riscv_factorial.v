@@ -3,31 +3,20 @@
 module tb_riscv_factorial;
 
     parameter CLK_HALF  = 5;
-    parameter MAX_CYCLES = 1000;
+    parameter NUM_INST  = 300; // Approx number of instructions executed
+    parameter TOTAL_CYCLES = (NUM_INST + 4) * 2;
 
     reg  clk = 0;
     reg  rst = 1;
 
-    wire [31:0] tb_pc;
-    wire [31:0] tb_alu_result;
-    wire [31:0] tb_reg_wb_data;
-    wire [4:0]  tb_reg_wb_addr;
-    wire        tb_reg_wb_en;
-
     riscv_top DUT (
         .clk           (clk),
-        .rst           (rst),
-        .tb_pc         (tb_pc),
-        .tb_alu_result (tb_alu_result),
-        .tb_reg_wb_data(tb_reg_wb_data),
-        .tb_reg_wb_addr(tb_reg_wb_addr),
-        .tb_reg_wb_en  (tb_reg_wb_en)
+        .rst           (rst)
     );
     defparam DUT.IMEM.HEX_FILE = "programs/hex/factorial.hex";
 
     always #CLK_HALF clk = ~clk;
 
-    integer cycle  = 0;
     integer errors = 0;
 
     initial begin
@@ -44,32 +33,19 @@ module tb_riscv_factorial;
     end
     `endif
 
-    always @(posedge clk) begin
-        if (!rst) begin
-            cycle = cycle + 1;
-            if (cycle >= MAX_CYCLES) begin
-                $display("TIMEOUT after %0d cycles", MAX_CYCLES);
-                $finish;
-            end
-        end
-    end
-
     // Monitor register writes so we can see progress
     always @(posedge clk) begin
-        if (!rst && tb_reg_wb_en && tb_reg_wb_addr != 0)
-            $display("[%0t] WB: x%0d = %0d", $time, tb_reg_wb_addr, $signed(tb_reg_wb_data));
+        if (!rst && DUT.wb_reg_write && DUT.wb_rd_addr != 0)
+            $display("[%0t] WB: x%0d = %0d", $time, DUT.wb_rd_addr, $signed(DUT.wb_wdata));
     end
 
-    // After enough cycles, check 7! stored at word address 4 (byte 0x10)
+    // After computed delay, check 7! stored at word address 4 (byte 0x10)
     initial begin
-        // Wait for reset + enough cycles for factorial to finish or HALT
+        // Wait for reset
         @(negedge rst);
-        while (DUT.instrF !== 32'hFFFFFFFF && cycle < MAX_CYCLES) begin
-            @(posedge clk);
-        end
         
-        // Wait 4 cycles to let the instructions before HALT finish the pipeline
-        repeat(4) @(posedge clk);
+        // Wait calculated total delay
+        #(CLK_HALF * 2 * TOTAL_CYCLES);
 
         $display("\n--- Factorial result check (7! stored at mem[4] = byte 0x10) ---");
         begin : check
