@@ -9,12 +9,12 @@ module reg_file (
     input  wire [31:0] wdata,
     input  wire        reg_write
 );
-    reg [31:0] regs [1:31];
+    reg [31:0] regs [0:31];
     integer i;
 
     always @(posedge clk) begin
         if (rst) begin
-            for (i = 1; i < 32; i = i + 1)
+            for (i = 0; i < 32; i = i + 1)
                 regs[i] <= 32'h0;
         end else if (reg_write && rd_addr != 5'h0) begin
             regs[rd_addr] <= wdata;

@@ -2,21 +2,27 @@
 
 module tb_riscv_factorial;
 
-    parameter CLK_HALF  = 5;
-    parameter NUM_INST  = 300; // Approx number of instructions executed
-    parameter TOTAL_CYCLES = (NUM_INST + 4) * 2;
+    // Clock period T = 2 * CLK_HALF = 10 ns
+    parameter CLK_HALF = 5;
 
-    reg  clk = 0;
-    reg  rst = 1;
+    // Delay formula: C = (N_dynamic + 4) * 2
+    // factorial dynamic instruction count N ~ 129
+    // (7 fact_loop iters + 28 mul_loop iters with nested calls + JAL/branch flush overhead)
+    // C = (129 + 4) * 2 = 266 cycles  →  total delay = 266 * 10ns = 2660 ns
+    parameter MAX_CYCLES = 266;
+
+    reg clk = 0;
+    reg rst = 1;
 
     riscv_top DUT (
-        .clk           (clk),
-        .rst           (rst)
+        .clk (clk),
+        .rst (rst)
     );
     defparam DUT.IMEM.HEX_FILE = "programs/hex/factorial.hex";
 
     always #CLK_HALF clk = ~clk;
 
+    integer cycle  = 0;
     integer errors = 0;
 
     initial begin
@@ -33,24 +39,26 @@ module tb_riscv_factorial;
     end
     `endif
 
-    // Monitor register writes so we can see progress
+    // Cycle counter — watchdog fires 20 cycles after MAX_CYCLES as a backstop only
     always @(posedge clk) begin
-        if (!rst && DUT.wb_reg_write && DUT.wb_rd_addr != 0)
-            $display("[%0t] WB: x%0d = %0d", $time, DUT.wb_rd_addr, $signed(DUT.wb_wdata));
+        if (!rst) begin
+            cycle = cycle + 1;
+            if (cycle >= MAX_CYCLES + 20) begin
+                $display("WATCHDOG: simulation exceeded %0d cycles", MAX_CYCLES + 20);
+                $finish;
+            end
+        end
     end
 
-    // After computed delay, check 7! stored at word address 4 (byte 0x10)
+    // Wait MAX_CYCLES then check — hardware halt has frozen the CPU by now
     initial begin
-        // Wait for reset
         @(negedge rst);
-        
-        // Wait calculated total delay
-        #(CLK_HALF * 2 * TOTAL_CYCLES);
+        repeat(MAX_CYCLES) @(posedge clk);
 
-        $display("\n--- Factorial result check (7! stored at mem[4] = byte 0x10) ---");
+        $display("\n--- Factorial result check (7! at mem word 4) ---");
         begin : check
             integer got;
-            got = DUT.DMEM.mem[4];   // byte addr 0x10 = word 4
+            got = DUT.DMEM.mem[4];
             if (got !== 5040) begin
                 $display("  FAIL 7! = %0d, expected 5040", got);
                 errors = errors + 1;

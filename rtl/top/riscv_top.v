@@ -18,11 +18,12 @@ module riscv_top (
 // 0.  HAZARD / FORWARD CONTROL (declared early; driven by hazard_unit below)
 // =============================================================================
 
-    wire        stall;          // Freeze PC + IF/ID; bubble into ID/EX
-    wire        flush;          // Squash IF/ID + ID/EX on taken branch
+    wire        stall;           // Freeze PC + IF/ID; bubble into ID/EX
+    wire        flush;           // Squash IF/ID + ID/EX on taken branch
     wire        hz_flush_unused; // hazard_unit flush output (unused; branch_taken drives flush)
-    wire [1:0]  fwd_a_sel;     // Forwarding mux for ALU operand A
-    wire [1:0]  fwd_b_sel;     // Forwarding mux for ALU operand B
+    wire [1:0]  fwd_a_sel;      // Forwarding mux for ALU operand A
+    wire [1:0]  fwd_b_sel;      // Forwarding mux for ALU operand B
+    wire        halt;            // PC freeze when HALT instruction (0xFFFFFFFF) is fetched
 
 // =============================================================================
 // 1.  IF STAGE
@@ -38,10 +39,14 @@ module riscv_top (
     assign pcPlus4F = pcF + 32'd4;
     assign pcNextF  = branch_taken ? branch_target : pcPlus4F;
 
+    // Halt: freeze PC permanently when the HALT sentinel (0xFFFFFFFF) is fetched.
+    // instrF is combinational (IMEM output), so halt is valid the same cycle.
+    assign halt = (instrF == 32'hFFFFFFFF);
+
     pc_reg PC_REG (
         .clk     (clk),
         .rst     (rst),
-        .en      (~stall),
+        .en      (~stall && ~halt),
         .pc_next (pcNextF),
         .pc      (pcF)
     );

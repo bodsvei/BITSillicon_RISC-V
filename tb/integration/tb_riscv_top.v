@@ -2,22 +2,26 @@
 
 module tb_riscv_top;
 
+    // Clock period T = 2 * CLK_HALF = 10 ns
     parameter CLK_HALF = 5;
-    parameter NUM_INST = 120; // Approx number of instructions executed
-    parameter TOTAL_CYCLES = (NUM_INST + 4) * 2;
-    parameter HEX_FILE = "programs/hex/fibonacci.hex";
 
-    reg  clk = 0;
-    reg  rst = 1;
+    // Delay formula: C = (N_dynamic + 4) * 2
+    // fibonacci dynamic instruction count N ~ 77 (8 preamble + 8 loop iters * 8 instr + 1 final beq + 3 nop + 1 halt)
+    // C = (77 + 4) * 2 = 162 cycles  →  total delay = 162 * 10ns = 1620 ns
+    parameter MAX_CYCLES = 162;
+
+    reg clk = 0;
+    reg rst = 1;
 
     riscv_top DUT (
-        .clk           (clk),
-        .rst           (rst)
+        .clk (clk),
+        .rst (rst)
     );
     defparam DUT.IMEM.HEX_FILE = "programs/hex/fibonacci.hex";
 
     always #CLK_HALF clk = ~clk;
 
+    integer cycle  = 0;
     integer errors = 0;
 
     // Hold reset for 2 cycles
@@ -28,7 +32,6 @@ module tb_riscv_top;
         rst = 0;
     end
 
-    // VCD dump if DUMP_VCD defined
     `ifdef DUMP_VCD
     initial begin
         $dumpfile("dump.vcd");
@@ -36,24 +39,23 @@ module tb_riscv_top;
     end
     `endif
 
-    // Monitor register writes
+    // Cycle counter — watchdog fires 20 cycles after MAX_CYCLES as a backstop only
     always @(posedge clk) begin
-        if (!rst && DUT.wb_reg_write && DUT.wb_rd_addr != 0) begin
-            $display("[%0t] WB: x%0d = 0x%08X (%0d)",
-                     $time, DUT.wb_rd_addr, DUT.wb_wdata, $signed(DUT.wb_wdata));
+        if (!rst) begin
+            cycle = cycle + 1;
+            if (cycle >= MAX_CYCLES + 20) begin
+                $display("WATCHDOG: simulation exceeded %0d cycles", MAX_CYCLES + 20);
+                $finish;
+            end
         end
     end
 
-    // After computed delay, read back memory and check fibonacci results
+    // Wait MAX_CYCLES then check — hardware halt has frozen the CPU by now
     initial begin
-        // Wait for reset
         @(negedge rst);
-        
-        // Wait calculated total delay
-        #(CLK_HALF * 2 * TOTAL_CYCLES);
+        repeat(MAX_CYCLES) @(posedge clk);
 
-        $display("\n--- Fibonacci result check (x1..x10 at mem 0x1000) ---");
-        // Read data memory via DUT.DMEM instance
+        $display("\n--- Fibonacci result check ---");
         begin : check
             integer i;
             integer got, exp;
@@ -63,7 +65,6 @@ module tb_riscv_top;
             fibs[8] = 21; fibs[9] = 34;
 
             for (i = 0; i < 10; i = i + 1) begin
-                // data_mem word address = byte_addr / 4 = 0x100/4 + i = 64 + i
                 got = $signed(DUT.DMEM.mem[64 + i]);
                 exp = fibs[i];
                 if (got !== exp) begin
