@@ -1,36 +1,45 @@
 # BITSilicon RV32I 5-Stage Pipelined RISC-V Processor
 
-A fully synthesizable implementation of a 32-bit, 5-stage pipelined RISC-V processor in Verilog, supporting the RV32I base integer instruction set. Developed as a collaborative hardware design project by a 12-member team.
+![Language](https://img.shields.io/badge/Language-Verilog-blue.svg)
+![ISA](https://img.shields.io/badge/ISA-RV32I-yellow.svg)
+![Platform](https://img.shields.io/badge/FPGA-Xilinx%20Artix--7-orange.svg)
+![Build Status](https://img.shields.io/badge/Build-Passing-brightgreen.svg)
+![Tests](https://img.shields.io/badge/Tests-Passed-success.svg)
+![Simulation](https://img.shields.io/badge/Simulator-Icarus%20Verilog-blueviolet.svg)
+![License](https://img.shields.io/badge/License-MIT-green.svg)
+
+Welcome to the **BITSilicon** repository! This is a fully synthesizable implementation of a 32-bit, 5-stage pipelined RISC-V processor written in Verilog. It supports the RV32I base integer instruction set and was developed as a collaborative hardware design project by a 12-member team.
+
+Whether you're a student learning computer architecture, or a developer exploring RISC-V implementations on FPGA, this project provides a clean, well-documented, and easy-to-understand codebase.
 
 ---
 
 ## Table of Contents
 
-- [Overview](#overview)
-- [Microarchitecture](#microarchitecture)
-- [ISA Coverage](#isa-coverage)
-- [Features](#features)
-- [Repository Structure](#repository-structure)
-- [Module Descriptions](#module-descriptions)
-- [Getting Started](#getting-started)
-- [Running Simulations](#running-simulations)
-- [Test Programs](#test-programs)
-- [Synthesis](#synthesis)
-- [Contributors](#contributors)
+- [Overview](#-overview)
+- [Microarchitecture](#-microarchitecture)
+- [ISA Coverage](#-isa-coverage)
+- [Features](#-features)
+- [Quick Start](#-quick-start)
+- [Running Simulations](#-running-simulations)
+- [Test Programs](#-test-programs)
+- [Synthesis](#-synthesis)
+- [Repository Structure](#-repository-structure)
+- [Module Descriptions](#-module-descriptions)
 
 ---
 
 ## Overview
 
-This project implements a classic 5-stage in-order scalar pipeline based on the RISC-V RV32I specification. The design targets FPGA implementation (Xilinx Artix-7) and is written in synthesizable Verilog RTL. The pipeline handles all data hazards through a combination of full forwarding and stall insertion, and resolves control hazards using a static not-taken branch predictor with single-cycle flush.
+This project implements a classic 5-stage in-order scalar pipeline based on the RISC-V RV32I specification. The design targets FPGA implementation (specifically the Xilinx Artix-7) and is written in synthesizable Verilog RTL.
 
-The implementation is based on the Harvard architecture, with separate instruction and data memory interfaces.
+It strictly adheres to a **Harvard architecture**, utilizing separate instruction and data memory interfaces. The pipeline effortlessly handles all data hazards through a robust combination of full forwarding and stall insertion. It also resolves control hazards using a static not-taken branch predictor with a single-cycle flush.
 
 ---
 
 ## Microarchitecture
 
-```
+```text
          IF            ID            EX           MEM           WB
    +-----------+  +-----------+  +--------+  +---------+   +---------+
    |  PC + IMem|  |Decode+RegF|  |  ALU   |  |  DMem   |   |   MUX   |
@@ -47,12 +56,11 @@ The implementation is based on the Harvard architecture, with separate instructi
 ```
 
 **Pipeline Stages:**
-
-- **IF** — Instruction Fetch: PC register, instruction memory, next-PC mux
-- **ID** — Instruction Decode: decoder, immediate generator, register file read
-- **EX** — Execute: ALU, branch condition evaluation, target address computation
-- **MEM** — Memory Access: data memory read/write, load extension
-- **WB** — Write Back: result selection mux, register file write
+- **IF (Instruction Fetch):** PC register, instruction memory, next-PC mux.
+- **ID (Instruction Decode):** Decoder, immediate generator, register file read.
+- **EX (Execute):** ALU, branch condition evaluation, target address computation.
+- **MEM (Memory Access):** Data memory read/write, load extension.
+- **WB (Write Back):** Result selection mux, register file write.
 
 **Pipeline Registers:** IF/ID, ID/EX, EX/MEM, MEM/WB with flush and stall enable inputs.
 
@@ -60,192 +68,87 @@ The implementation is based on the Harvard architecture, with separate instructi
 
 ## ISA Coverage
 
-The processor supports the full **RV32I** base integer instruction set (47 instructions):
+The processor supports the full **RV32I** base integer instruction set (47 instructions).
 
 | Format | Instructions |
 |--------|-------------|
-| R-type | ADD, SUB, SLL, SLT, SLTU, XOR, SRL, SRA, OR, AND |
-| I-type (arithmetic) | ADDI, SLTI, SLTIU, XORI, ORI, ANDI, SLLI, SRLI, SRAI |
-| I-type (load) | LB, LH, LW, LBU, LHU |
-| S-type | SB, SH, SW |
-| B-type | BEQ, BNE, BLT, BGE, BLTU, BGEU |
-| U-type | LUI, AUIPC |
-| J-type | JAL, JALR |
-| System | ECALL, EBREAK |
+| **R-type** | `ADD`, `SUB`, `SLL`, `SLT`, `SLTU`, `XOR`, `SRL`, `SRA`, `OR`, `AND` |
+| **I-type (arithmetic)** | `ADDI`, `SLTI`, `SLTIU`, `XORI`, `ORI`, `ANDI`, `SLLI`, `SRLI`, `SRAI` |
+| **I-type (load)** | `LB`, `LH`, `LW`, `LBU`, `LHU` |
+| **S-type** | `SB`, `SH`, `SW` |
+| **B-type** | `BEQ`, `BNE`, `BLT`, `BGE`, `BLTU`, `BGEU` |
+| **U-type** | `LUI`, `AUIPC` |
+| **J-type** | `JAL`, `JALR` |
+| **System** | `ECALL`, `EBREAK`, Custom `HALT` (mapped to `0xFFFFFFFF`) |
 
 ---
 
 ## Features
 
-- Full RV32I instruction set coverage
-- 5-stage in-order pipeline with CPI approaching 1.0 under low-hazard workloads
-- Full forwarding paths: EX-EX and MEM-EX
-- Load-use hazard detection with 1-cycle stall insertion
-- Control hazard handling: static not-taken predictor with 1-cycle pipeline flush
-- Harvard memory architecture: separate instruction ROM and data RAM
-- Byte-addressed data memory with LB/LH/LBU/LHU sign/zero extension
-- Synchronous write, asynchronous read register file; x0 hardwired to zero
-- Parameterized data path widths
-- Self-checking testbenches with golden reference comparison
+- **Full RV32I coverage:** 100% compliant with the base integer instruction set.
+- **5-Stage Pipeline:** In-order execution with CPI approaching 1.0 under low-hazard workloads.
+- **Advanced Forwarding:** Full forwarding paths (EX-EX and MEM-EX) to minimize stalls.
+- **Hazard Handling:** Intelligent load-use hazard detection with 1-cycle stall insertion.
+- **Branch Prediction:** Static not-taken predictor with a clean 1-cycle pipeline flush on taken branches.
+- **Memory Architecture:** Byte-addressed Harvard architecture with LB/LH/LBU/LHU sign/zero extensions.
+- **Simplified Registers:** Synchronous write, asynchronous read register file with `x0` permanently hardwired to zero.
+- **Verified:** Fully self-checking testbenches with golden reference comparison included.
 
 ---
 
-## Repository Structure
-
-```
-riscv-processor/
-├── rtl/
-│   ├── top/
-│   │   └── riscv_top.v             # Top-level integration
-│   ├── if_stage/
-│   │   ├── pc_reg.v                # Program counter register
-│   │   ├── instr_mem.v             # Instruction memory (ROM)
-│   │   └── if_id_reg.v             # IF/ID pipeline register
-│   ├── id_stage/
-│   │   ├── instr_decoder.v         # Instruction field extraction
-│   │   ├── imm_gen.v               # Immediate generator (all 6 formats)
-│   │   ├── reg_file.v              # 32x32 register file
-│   │   └── id_ex_reg.v             # ID/EX pipeline register
-│   ├── control/
-│   │   ├── main_decoder.v          # Opcode to control signal decoder
-│   │   └── alu_decoder.v           # ALUControl generation
-│   ├── ex_stage/
-│   │   ├── alu.v                   # 32-bit ALU with flag outputs
-│   │   ├── branch_unit.v           # Branch condition + target computation
-│   │   └── ex_mem_reg.v            # EX/MEM pipeline register
-│   ├── mem_stage/
-│   │   ├── data_mem.v              # Data memory (byte-addressed)
-│   │   ├── load_extend.v           # Load sign/zero extension
-│   │   └── mem_wb_reg.v            # MEM/WB pipeline register
-│   ├── wb_stage/
-│   │   └── writeback.v             # Result mux and register write
-│   └── hazard/
-│       ├── hazard_detect.v         # Load-use and control hazard detection
-│       └── forward_unit.v          # EX-EX and MEM-EX forwarding
-├── tb/
-│   ├── unit/
-│   │   ├── tb_alu.v
-│   │   ├── tb_reg_file.v
-│   │   ├── tb_imm_gen.v
-│   │   ├── tb_instr_decoder.v
-│   │   ├── tb_hazard_detect.v
-│   │   ├── tb_forward_unit.v
-│   │   └── tb_data_mem.v
-│   └── integration/
-│       ├── tb_riscv_top.v          # Full processor integration testbench
-│       └── expected/               # Golden register/memory state files
-├── programs/
-│   ├── asm/
-│   │   ├── fibonacci.s
-│   │   ├── bubble_sort.s
-│   │   └── factorial.s
-│   └── hex/
-│       ├── fibonacci.hex
-│       ├── bubble_sort.hex
-│       └── factorial.hex
-├── constraints/
-│   └── artix7.xdc                  # Xilinx Artix-7 pin constraints
-├── scripts/
-│   ├── run_sim.sh                  # Batch simulation runner
-│   └── assemble.py                 # Minimal RV32I assembler
-├── docs/
-│   ├── microarchitecture.md        # Detailed architecture documentation
-│   ├── interface_spec.md           # Inter-module port definitions
-│   └── hazard_analysis.md          # Hazard coverage and forwarding paths
-└── README.md
-```
-
----
-
-## Module Descriptions
-
-### rtl/top/riscv_top.v
-Top-level wrapper instantiating all pipeline stages, hazard detection, and forwarding unit. All inter-module connections are resolved here. Port widths follow the definitions in `docs/interface_spec.md`.
-
-### rtl/if_stage/
-Implements the PC register with synchronous reset, the instruction memory initialized from a `.hex` file, the next-PC mux (PC+4 vs branch/jump target), and the IF/ID pipeline register with flush and stall inputs.
-
-### rtl/id_stage/instr_decoder.v and imm_gen.v
-Both files are owned by the same sub-project. `instr_decoder.v` extracts opcode `[6:0]`, funct3 `[14:12]`, funct7b5 `[30]`, rs1 `[19:15]`, rs2 `[24:20]`, and rd `[11:7]` from the 32-bit instruction word, feeding raw fields to the control unit and immediate generator. `imm_gen.v` generates a 32-bit sign-extended immediate from any of the six RV32I immediate encodings (I, S, B, U, J), with format selected from the opcode. Both modules share the same instruction word input and are naturally paired for ownership.
-
-### rtl/id_stage/reg_file.v
-Implements the 32 x 32-bit general-purpose register file. Two asynchronous read ports, one synchronous write port. x0 is permanently tied to zero and ignores writes. Write-before-read behaviour on address collision is defined explicitly to avoid simulation ambiguity.
-
-### rtl/control/
-Two-level control logic. `main_decoder.v` decodes the opcode into datapath control signals (RegWrite, MemRead, MemWrite, Branch, Jump, ALUSrc, ResultSrc, ImmSrc). `alu_decoder.v` combines opcode, funct3, and funct7b5 to produce `ALUControl[3:0]`.
-
-### rtl/ex_stage/alu.v
-Computes all RV32I arithmetic and logic operations. Outputs a 32-bit result plus four condition flags: Zero, Negative, Carry, and Overflow. Flag definitions follow two's complement signed semantics for Carry and Overflow.
-
-### rtl/ex_stage/branch_unit.v
-Evaluates all six branch conditions using ALU flags. Computes branch target (PC + B-immediate), JAL target (PC + J-immediate), and JALR target (rs1 + I-immediate, LSB cleared). Drives the PCSrc signal to the IF stage mux.
-
-### rtl/mem_stage/data_mem.v
-Byte-addressed synchronous data memory. Supports byte, halfword, and word accesses for both loads and stores. `load_extend.v` applies sign extension for LB and LH, and zero extension for LBU and LHU.
-
-### rtl/wb_stage/writeback.v
-Three-input result mux selecting between ALUResult, MemReadData, and PC+4 (used by JAL/JALR for link register write). Drives the write-back path into the register file.
-
-### rtl/hazard/hazard_detect.v and forward_unit.v
-Both files are owned by the same sub-project. `hazard_detect.v` detects load-use RAW hazards by comparing the EX-stage destination register against the ID-stage source registers when MemRead is asserted, generating StallF, StallD, and FlushE. It also detects branch-taken events and generates FlushD and FlushE for the 1-cycle control hazard penalty. `forward_unit.v` resolves RAW data hazards without stalling: EX-EX forwarding carries results from the EX/MEM register to the ALU inputs, and MEM-EX forwarding carries results from the MEM/WB register to the ALU inputs, generating `ForwardA[1:0]` and `ForwardB[1:0]` mux select signals. These two modules are merged under one owner because the decision of whether to stall versus forward for any given hazard requires constant cross-reference between them.
-
----
-
-## Getting Started
+## Quick Start
 
 ### Prerequisites
 
-- Verilog simulator: [Icarus Verilog](https://github.com/steveicarus/iverilog) (open-source) or ModelSim / Vivado Simulator
-- Waveform viewer: [GTKWave](https://gtkwave.sourceforge.net/)
-- Python 3.8+ (for the assembler script)
-- GNU RISC-V toolchain (optional, for compiling C to RISC-V assembly)
+To get up and running, you will need the following installed on your machine:
+- **Verilog Simulator:** [Icarus Verilog](https://github.com/steveicarus/iverilog) (open-source) or ModelSim / Vivado Simulator.
+- **Waveform Viewer:** [GTKWave](https://gtkwave.sourceforge.net/) for visualizing `.vcd` files.
+- **Python:** Python 3.8+ (for running the assembler script).
+- *(Optional)* GNU RISC-V toolchain (for compiling C to RISC-V assembly).
 
 ### Cloning the Repository
 
+Grab a copy of the codebase and jump right in!
 ```bash
-git clone https://github.com/bodsvei/BITSillicon_RISC-V
-cd riscv-processor
+git clone https://github.com/bodsvei/BITSillicon_RISC-V.git
+cd BITSillicon_RISC-V
 ```
 
 ---
 
 ## Running Simulations
 
+We make testing easy! You can either run targeted unit tests on individual modules or execute full integration tests across the entire CPU.
+
+### Full Integration Test (Recommended)
+This runs the full processor testbench natively via our Makefile:
+```bash
+make sim
+```
+> **What this does:** Compiles all RTL sources and the testbench, assembles the default programs in `programs/asm/` to `.hex`, runs the simulation, and automatically compares the final register/memory state to verify the CPU is calculating correctly!
+
 ### Unit Tests
-
-Run a unit testbench for a single module:
-
+To run a unit testbench for a single module:
 ```bash
 iverilog -o sim_out tb/unit/tb_alu.v rtl/ex_stage/alu.v
 vvp sim_out
 ```
 
-### Integration Test
-
-Run the full processor testbench:
-
-```bash
-bash scripts/run_sim.sh
-```
-
-This compiles all RTL sources and the integration testbench, loads a program from `programs/hex/`, runs simulation, and compares the final register file state against the expected output in `tb/integration/expected/`.
-
 ### Loading a Custom Program
-
-Assemble a `.s` file to a `.hex` file using the included script:
-
+You can use the included Python assembler to compile your own `.s` programs:
 ```bash
 python3 scripts/assemble.py programs/asm/fibonacci.s -o programs/hex/fibonacci.hex
 ```
-
-Then set the `HEX_FILE` parameter in `tb/integration/tb_riscv_top.v` to point to the generated file and re-run simulation.
+*Note: Make sure to update the `HEX_FILE` parameter in `tb/integration/tb_riscv_top.v` to point to your new file.*
 
 ### Viewing Waveforms
-
-To dump a VCD file and open it in GTKWave:
-
+Generate a `.vcd` file and visualize the pipeline stages using GTKWave:
 ```bash
-iverilog -o sim_out -DDUMP_VCD tb/integration/tb_riscv_top.v rtl/**/*.v
+make wave PROG=fibonacci
+```
+*(Alternative manual command)*:
+```bash
+iverilog -Wall -Wno-timescale -DDUMP_VCD -o sim_out -P tb_riscv_top.DUT.IMEM.HEX_FILE=\"programs/hex/fibonacci.hex\" tb/integration/tb_riscv_top.v rtl/**/*.v
 vvp sim_out
 gtkwave dump.vcd
 ```
@@ -254,28 +157,62 @@ gtkwave dump.vcd
 
 ## Test Programs
 
-Three programs are included to exercise the full RV32I instruction set and hazard paths:
+Three robust assembly programs are included to exercise the full RV32I instruction set and test all pipeline hazard pathways:
 
-**fibonacci.s** — Computes the first N Fibonacci numbers iteratively. Exercises I-type arithmetic, loop branches (BLT, BNE), and load/store for array writes. Tests EX-EX and MEM-EX forwarding under sustained back-to-back dependency chains.
-
-**bubble_sort.s** — Sorts an integer array in-place. Exercises indexed load/store (LW, SW with base+offset addressing), nested loops, and BGE/BLT branch conditions. Tests load-use stall insertion in the inner loop.
-
-**factorial.s** — Computes N! using a loop. Exercises MUL if the M extension is present, otherwise uses repeated addition. Tests JAL for function call and JALR for return, verifying link register write and return address forwarding.
+1. **`fibonacci.s`** — Computes the first N Fibonacci numbers iteratively. Exercises I-type arithmetic, loop branches (BLT, BNE), and array load/store logic. Severely tests EX-EX and MEM-EX forwarding.
+2. **`bubble_sort.s`** — Sorts an integer array in-place. Exercises indexed load/store (LW, SW with base+offset addressing), nested loops, and branch conditions. Actively tests load-use stall insertion in the inner loop.
+3. **`factorial.s`** — Computes N! via loop-based repeated addition. Tests JAL for function calls and JALR for returns, verifying link register writes and return address forwarding.
 
 ---
 
 ## Synthesis
 
-The design has been synthesized for the **Xilinx Artix-7 (xc7a35tcpg236-1)** using Vivado 2023.2. Pin assignments are in `constraints/artix7.xdc`.
+The design has been synthesized for the **Xilinx Artix-7 (xc7a35tcpg236-1)** using Vivado 2023.2. Hardware constraints are located in `constraints/artix7.xdc`.
 
-To synthesize in Vivado:
+**To synthesize in Vivado:**
+1. Open Vivado and create a new RTL project.
+2. Add all files under `rtl/` as design sources.
+3. Add `constraints/artix7.xdc` as a constraints source.
+4. Set `rtl/top/riscv_top.v` as the **top module**.
+5. Run Synthesis, Implementation, and Generate Bitstream.
 
-1. Open Vivado and create a new RTL project
-2. Add all files under `rtl/` as design sources
-3. Add `constraints/artix7.xdc` as a constraints source
-4. Set `rtl/top/riscv_top.v` as the top module
-5. Run Synthesis, Implementation, and Generate Bitstream
-
-**Target utilization is under 5% of Artix-7 LUT resources for the base RV32I datapath.**
+> **Target utilization is extremely efficient, utilizing under 5% of Artix-7 LUT resources for the base RV32I datapath.**
 
 ---
+
+## Repository Structure
+
+```text
+riscv-processor/
+├── rtl/                        # Synthesizable Verilog Hardware Files
+│   ├── top/                    # Top-level integration (riscv_top.v)
+│   ├── if_stage/               # PC, Instruction Memory (ROM), IF/ID reg
+│   ├── id_stage/               # Decoder, Immediate Gen, Register File, ID/EX reg
+│   ├── control/                # Main decoder and ALU control logic
+│   ├── ex_stage/               # ALU, Branch Unit, EX/MEM reg
+│   ├── mem_stage/              # Data Memory (RAM), Load Extender, MEM/WB reg
+│   ├── wb_stage/               # Writeback Mux
+│   └── hazard/                 # Hazard Detection & Forwarding Unit
+├── tb/                         # Testbenches
+│   ├── unit/                   # Individual module testbenches
+│   └── integration/            # Full processor testbenches (fibonacci, sort, etc.)
+├── programs/                   # Assembly programs for testing
+│   ├── asm/                    # Source `.s` files
+│   └── hex/                    # Compiled hexadecimal files
+├── constraints/                # Xilinx Artix-7 constraints (.xdc)
+├── scripts/                    # Utilities (Assembler, Sim runners)
+└── docs/                       # Specifications and Architecture docs
+```
+
+---
+
+## Module Descriptions
+
+- **`riscv_top.v`**: The top-level wrapper that instantiates all pipeline stages, hazard detection, and forwarding units. It contains *only* `clk` and `rst` as external inputs, acting as a true standalone processor.
+- **`if_stage/`**: Handles the PC register with synchronous reset, Instruction ROM, and Next-PC muxing.
+- **`id_stage/`**: Contains the Instruction Decoder (extracting opcodes, registers, and functs), Immediate Generator, and the 32x32-bit General Purpose Register File.
+- **`control/`**: Uses a two-level approach where `main_decoder.v` governs datapath signals and `alu_decoder.v` dictates ALU operations.
+- **`ex_stage/`**: Executes arithmetic operations in the ALU and computes branch target addresses via the Branch Unit.
+- **`mem_stage/`**: Handles byte-addressed synchronous data memory (loads and stores) along with sign/zero extensions.
+- **`wb_stage/`**: Selects the final result to write back into the Register File.
+- **`hazard/`**: The brain for pipeline control. It resolves RAW hazards through forwarding (EX-EX, MEM-EX) and injects stalls/flushes when necessary (e.g., load-use stalls, branch flushes).
