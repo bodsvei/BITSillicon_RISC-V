@@ -15,6 +15,8 @@
 //  MemWrite  : 1 = data memory write enable (store instructions)
 //  Branch    : 1 = instruction is a B-type branch
 //  Jump      : 1 = instruction is JAL or JALR
+//  Trap      : 1 = instruction triggers a trap (ECALL, EBREAK)
+//               Can be used to halt simulation or invoke a trap handler.
 //  ResultSrc : WB mux select (spec §7.2)
 //               2'b00 = ALU result
 //               2'b01 = memory read data
@@ -26,6 +28,7 @@
 //               3'b011 = U-type
 //               3'b100 = J-type
 //               3'b101 = R-type (no immediate; imm_gen outputs 0)
+//  AuiPC     : 1 for AUIPC: EX stage must use pipelined PC as ALU operand A
 // =============================================================================
 
 module main_decoder (
@@ -37,9 +40,10 @@ module main_decoder (
     output reg        MemWrite,
     output reg        Branch,
     output reg        Jump,
+    output reg        Trap,       // ECALL / EBREAK trap signal
     output reg [1:0]  ResultSrc,
     output reg [2:0]  ImmSrc,
-    output reg        AuiPC   // 1 for AUIPC: ALU operand_a must be PC, not rs1
+    output reg        AuiPC      // 1 for AUIPC: ALU operand_a must be PC, not rs1
 );
 
     // RV32I opcode map (spec vol I §2.2)
@@ -52,7 +56,8 @@ module main_decoder (
     localparam OP_JALR   = 7'b1100111; // I-type  : JALR
     localparam OP_LUI    = 7'b0110111; // U-type  : LUI
     localparam OP_AUIPC  = 7'b0010111; // U-type  : AUIPC
-    localparam OP_SYSTEM = 7'b1110011; // ECALL / EBREAK (treated as NOP here)
+    localparam OP_FENCE  = 7'b0001111; // FENCE / FENCE.I — memory ordering hint
+    localparam OP_SYSTEM = 7'b1110011; // ECALL / EBREAK
 
     always @(*) begin
         // Safe defaults — prevents latches and makes bubbles safe
@@ -62,6 +67,7 @@ module main_decoder (
         MemWrite  = 1'b0;
         Branch    = 1'b0;
         Jump      = 1'b0;
+        Trap      = 1'b0;
         ResultSrc = 2'b00;
         ImmSrc    = 3'b000;
         AuiPC     = 1'b0;
@@ -113,7 +119,7 @@ module main_decoder (
 
             OP_JAL: begin
                 RegWrite  = 1'b1;
-                ALUSrc    = 1'b0;   // ALU not used for target (branch_unit handles it)
+                ALUSrc    = 1'b0;   // target computed by branch_unit
                 Jump      = 1'b1;
                 ResultSrc = 2'b10;  // write back PC+4 (link address)
                 ImmSrc    = 3'b100; // J-type immediate
@@ -121,7 +127,7 @@ module main_decoder (
 
             OP_JALR: begin
                 RegWrite  = 1'b1;
-                ALUSrc    = 1'b1;   // target = rs1 + I-imm (computed in branch_unit)
+                ALUSrc    = 1'b1;   // target = rs1 + I-imm (in branch_unit)
                 Jump      = 1'b1;
                 ResultSrc = 2'b10;  // write back PC+4
                 ImmSrc    = 3'b000; // I-type immediate
@@ -129,7 +135,6 @@ module main_decoder (
 
             OP_LUI: begin
                 // rd = U-immediate (upper 20 bits, lower 12 zeroed)
-                // ALU passes imm through (LUI op, spec §7.1 alu_op 4'b1010)
                 RegWrite  = 1'b1;
                 ALUSrc    = 1'b1;
                 ResultSrc = 2'b00;
@@ -145,10 +150,19 @@ module main_decoder (
                 AuiPC     = 1'b1;   // signal EX to use idex_pc as operand_a
             end
 
-            OP_SYSTEM: begin
-                // ECALL / EBREAK — treated as NOP for now
-                // No register write, no memory access
+            OP_FENCE: begin
+                // FENCE / FENCE.I — memory ordering hint.
+                // In this single-issue, in-order pipeline with no cache, all
+                // stores are globally visible before the next instruction anyway.
+                // Treated as NOP; no datapath action required.
                 RegWrite  = 1'b0;
+            end
+
+            OP_SYSTEM: begin
+                // ECALL / EBREAK — raise a trap.
+                // Trap signal can be used by riscv_top to halt or redirect to
+                // a trap handler. No register write or memory access.
+                Trap      = 1'b1;
             end
 
             default: begin

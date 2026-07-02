@@ -11,8 +11,7 @@ module tb_hazard_detect;
     wire       stall;
     wire [1:0] fwd_a_sel, fwd_b_sel;
 
-    // flush not driven by hazard_unit in this design (wired to 0), omit
-    wire hz_flush;
+    // flush is driven by branch_taken in riscv_top, not by hazard_unit
 
     hazard_unit DUT(
         .ifid_rs1_addr (ifid_rs1_addr),
@@ -26,7 +25,6 @@ module tb_hazard_detect;
         .memwb_rd_addr (memwb_rd_addr),
         .memwb_reg_write(memwb_reg_write),
         .stall         (stall),
-        .flush         (hz_flush),
         .fwd_a_sel     (fwd_a_sel),
         .fwd_b_sel     (fwd_b_sel)
     );

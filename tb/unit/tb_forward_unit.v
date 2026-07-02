@@ -1,26 +1,32 @@
 `timescale 1ns/1ps
 // Forward unit is part of hazard_unit — this testbench aliases it
 module tb_forward_unit;
+    // ifid_rs1/rs2 needed for load-use stall detection (not exercised here, tie to 0)
+    reg [4:0]  ifid_rs1_addr, ifid_rs2_addr;
     reg [4:0]  rs1_addr, rs2_addr, idex_rd, exmem_rd, memwb_rd;
     reg        exmem_rw, memwb_rw;
     wire [1:0] fwd_a, fwd_b;
-    wire stall_unused, flush_unused;
+    wire       stall_unused;
 
     hazard_unit DUT(
-        .idex_rs1_addr (rs1_addr),
-        .idex_rs2_addr (rs2_addr),
-        .idex_rd_addr  (idex_rd),
-        .idex_mem_read (1'b0),
-        .exmem_rd_addr (exmem_rd),
+        .ifid_rs1_addr  (ifid_rs1_addr),
+        .ifid_rs2_addr  (ifid_rs2_addr),
+        .idex_rs1_addr  (rs1_addr),
+        .idex_rs2_addr  (rs2_addr),
+        .idex_rd_addr   (idex_rd),
+        .idex_mem_read  (1'b0),
+        .exmem_rd_addr  (exmem_rd),
         .exmem_reg_write(exmem_rw),
-        .memwb_rd_addr (memwb_rd),
+        .memwb_rd_addr  (memwb_rd),
         .memwb_reg_write(memwb_rw),
-        .stall(stall_unused), .flush(flush_unused),
-        .fwd_a_sel(fwd_a), .fwd_b_sel(fwd_b)
+        .stall          (stall_unused),
+        .fwd_a_sel      (fwd_a),
+        .fwd_b_sel      (fwd_b)
     );
 
     integer errors = 0;
     initial begin
+        ifid_rs1_addr=0; ifid_rs2_addr=0; // tie unused stall inputs to 0
         idex_rd=3; rs1_addr=1; rs2_addr=2; memwb_rd=9; memwb_rw=0;
 
         // EX priority over MEM for A

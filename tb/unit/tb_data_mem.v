@@ -4,9 +4,11 @@ module tb_data_mem;
     reg  [31:0] addr, wdata;
     reg  [2:0]  funct3;
     wire [31:0] rdata;
+    wire        misaligned;
 
     data_mem DUT(.clk(clk),.addr(addr),.wdata(wdata),.mem_read(mem_read),
-                 .mem_write(mem_write),.funct3(funct3),.rdata(rdata));
+                 .mem_write(mem_write),.funct3(funct3),.rdata(rdata),
+                 .misaligned(misaligned));
     always #5 clk = ~clk;
 
     integer errors = 0;

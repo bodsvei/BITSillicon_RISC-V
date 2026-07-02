@@ -1,12 +1,16 @@
 // =============================================================================
-// rv32i_top.v — RV32I 5-Stage Pipelined Processor Top-Level
+// riscv_top.v — RV32I 5-Stage Pipelined Processor Top-Level
 // Authors  : Anirudh
-// Version  : 0.1
+// Version  : 0.2
 // Spec ref : rv32i_top_spec.md §4-8
 //
 // Instantiation order mirrors datapath left-to-right:
 //   IF → IF/ID reg → ID → ID/EX reg → EX → EX/MEM reg → MEM → MEM/WB reg → WB
 // Hazard/Forwarding unit sits beside ID/EX and drives stall + fwd muxes.
+//
+// Halt conditions (PC freezes permanently):
+//   1. EBREAK (0x00100073) — standard RISC-V breakpoint / simulation exit
+//   2. Sentinel 0xFFFFFFFF — non-standard convenience sentinel for simulation
 // =============================================================================
 
 module riscv_top (
@@ -18,18 +22,17 @@ module riscv_top (
 // 0.  HAZARD / FORWARD CONTROL (declared early; driven by hazard_unit below)
 // =============================================================================
 
-    wire        stall;           // Freeze PC + IF/ID; bubble into ID/EX
-    wire        flush;           // Squash IF/ID + ID/EX on taken branch
-    wire        hz_flush_unused; // hazard_unit flush output (unused; branch_taken drives flush)
-    wire [1:0]  fwd_a_sel;      // Forwarding mux for ALU operand A
-    wire [1:0]  fwd_b_sel;      // Forwarding mux for ALU operand B
-    wire        halt;            // PC freeze when HALT instruction (0xFFFFFFFF) is fetched
+    wire        stall;          // Freeze PC + IF/ID; bubble into ID/EX
+    wire        flush;          // Squash IF/ID + ID/EX on taken branch/jump
+    wire [1:0]  fwd_a_sel;     // Forwarding mux for ALU operand A
+    wire [1:0]  fwd_b_sel;     // Forwarding mux for ALU operand B
+    wire        halt;           // PC freeze when HALT/EBREAK instruction is fetched
 
 // =============================================================================
 // 1.  IF STAGE
 // =============================================================================
 
-    // --- PC logic (lives in top per existing skeleton) ---
+    // --- PC logic ---
     wire [31:0] pcF;
     wire [31:0] pcPlus4F;
     wire [31:0] pcNextF;
@@ -39,21 +42,21 @@ module riscv_top (
     assign pcPlus4F = pcF + 32'd4;
     assign pcNextF  = branch_taken ? branch_target : pcPlus4F;
 
-    // Halt: freeze PC permanently when the HALT sentinel (0xFFFFFFFF) is fetched.
+    // Halt: freeze PC permanently on EBREAK or the simulation sentinel.
     // instrF is combinational (IMEM output), so halt is valid the same cycle.
-    assign halt = (instrF == 32'hFFFFFFFF);
+    wire [31:0] instrF;
+    assign halt = (instrF == 32'h00100073) ||   // EBREAK (standard)
+                  (instrF == 32'hFFFFFFFF);      // simulation sentinel (legacy)
 
     pc_reg PC_REG (
         .clk     (clk),
         .rst     (rst),
-        .en      (~stall && ~halt),
+        .en      (~stall & ~halt),
         .pc_next (pcNextF),
         .pc      (pcF)
     );
 
-    // --- Instruction memory (inside if_stage) ---
-    wire [31:0] instrF;
-
+    // --- Instruction memory ---
     instr_mem IMEM (
         .pc    (pcF),
         .instr (instrF)
@@ -85,12 +88,12 @@ module riscv_top (
 // =============================================================================
 
     // --- Field extraction from instruction ---
-    wire [6:0]  opcode  = ifid_instr[6:0];
-    wire [2:0]  funct3  = ifid_instr[14:12];
-    wire [6:0]  funct7  = ifid_instr[31:25];
-    wire [4:0]  rs1_addr_D = ifid_instr[19:15];
-    wire [4:0]  rs2_addr_D = ifid_instr[24:20];
-    wire [4:0]  rd_addr_D  = ifid_instr[11:7];
+    wire [6:0]  opcode      = ifid_instr[6:0];
+    wire [2:0]  funct3      = ifid_instr[14:12];
+    wire [6:0]  funct7      = ifid_instr[31:25];
+    wire [4:0]  rs1_addr_D  = ifid_instr[19:15];
+    wire [4:0]  rs2_addr_D  = ifid_instr[24:20];
+    wire [4:0]  rd_addr_D   = ifid_instr[11:7];
 
     // --- Immediate generator ---
     wire [31:0] immD;
@@ -110,6 +113,8 @@ module riscv_top (
     wire        branch_D;
     wire        jump_D;
     wire        auipc_D;
+    wire        trap_D;      // ECALL/EBREAK trap signal
+    wire [2:0]  imm_src_D;  // Immediate format (available for future use)
 
     control_unit CTRL (
         .opcode     (opcode),
@@ -123,7 +128,9 @@ module riscv_top (
         .mem_to_reg (mem_to_reg_D),
         .branch     (branch_D),
         .jump       (jump_D),
-        .auipc      (auipc_D)
+        .trap       (trap_D),
+        .auipc      (auipc_D),
+        .imm_src    (imm_src_D)
     );
 
     // --- Register file read (write port driven from WB below) ---
@@ -234,8 +241,7 @@ module riscv_top (
     wire [31:0] memwb_mem_data;    // declared forward; driven by MEM/WB reg
     wire [1:0]  memwb_mem_to_reg;  // declared forward
 
-    // WB mux result (used as forwarding source from MEM/WB stage)
-    // reuses wb_wdata declared in section 3
+    // wb_wdata reused as forwarding source from MEM/WB stage (declared in §3)
     wire [31:0] fwd_src_a;
     wire [31:0] fwd_src_b_pre; // before alu_src mux
 
@@ -247,11 +253,12 @@ module riscv_top (
                            (fwd_b_sel == 2'b10) ? wb_wdata          :
                                                   idex_rs2_data;
 
-    // AUIPC: rd = PC + U-imm, so operand_a must be the pipelined PC
+    // AUIPC: rd = PC + U-imm. Override operand A with the pipelined PC.
+    // This is the single authoritative AUIPC mechanism in the design.
     wire [31:0] alu_operand_a;
     assign alu_operand_a = idex_auipc ? idex_pc : fwd_src_a;
 
-    // ALU src B mux: register data vs immediate (spec §5.2 idex_alu_src)
+    // ALU src B mux: register data vs immediate
     wire [31:0] alu_operand_b;
     assign alu_operand_b = idex_alu_src ? idex_imm : fwd_src_b_pre;
 
@@ -282,57 +289,53 @@ module riscv_top (
         .branch_target(branch_target)
     );
 
-    // Control hazard flush: flush IF/ID and ID/EX whenever a branch/jump is taken
+    // Control hazard flush: flush IF/ID and ID/EX whenever a branch/jump is taken.
+    // Note: flush is driven here directly from branch_taken, NOT from hazard_unit
+    //       (hazard_unit only handles data hazards / forwarding).
     assign flush = branch_taken;
 
 // =============================================================================
 // 6.  EX/MEM PIPELINE REGISTER  (spec §5.3)
+//
+// Note: exmem_branch, exmem_jump, exmem_zero are NOT stored here.
+//       Branch/jump decisions are fully resolved in EX; there is no need to
+//       carry these flags forward to MEM. Removing them saves flip-flops.
 // =============================================================================
 
     reg [31:0] exmem_pc_plus4;
-    // exmem_alu_result declared forward above as wire; redeclare as reg here
-    // Verilog requires a single driver, so use a reg and wire alias
+    // exmem_alu_result declared forward above as wire; back with a reg + alias
     reg  [31:0] exmem_alu_result_r;
     assign exmem_alu_result = exmem_alu_result_r;
 
     reg [31:0] exmem_rs2_data;
     reg [4:0]  exmem_rd_addr;
-    reg        exmem_zero;
     reg        exmem_reg_write;
     reg        exmem_mem_read;
     reg        exmem_mem_write;
     reg [1:0]  exmem_mem_to_reg;
-    reg        exmem_branch;
-    reg        exmem_jump;
     reg [2:0]  exmem_funct3;
 
     always @(posedge clk) begin
         if (rst) begin
-            exmem_pc_plus4    <= 32'h0;
-            exmem_alu_result_r<= 32'h0;
-            exmem_rs2_data    <= 32'h0;
-            exmem_rd_addr     <= 5'h0;
-            exmem_zero        <= 1'b0;
-            exmem_reg_write   <= 1'b0;
-            exmem_mem_read    <= 1'b0;
-            exmem_mem_write   <= 1'b0;
-            exmem_mem_to_reg  <= 2'b00;
-            exmem_branch      <= 1'b0;
-            exmem_jump        <= 1'b0;
-            exmem_funct3      <= 3'h0;
+            exmem_pc_plus4     <= 32'h0;
+            exmem_alu_result_r <= 32'h0;
+            exmem_rs2_data     <= 32'h0;
+            exmem_rd_addr      <= 5'h0;
+            exmem_reg_write    <= 1'b0;
+            exmem_mem_read     <= 1'b0;
+            exmem_mem_write    <= 1'b0;
+            exmem_mem_to_reg   <= 2'b00;
+            exmem_funct3       <= 3'h0;
         end else begin
-            exmem_pc_plus4    <= idex_pc_plus4;
-            exmem_alu_result_r<= alu_result_E;
-            exmem_rs2_data    <= fwd_src_b_pre; // post-forwarding store data
-            exmem_rd_addr     <= idex_rd_addr;
-            exmem_zero        <= alu_zero_E;
-            exmem_reg_write   <= idex_reg_write;
-            exmem_mem_read    <= idex_mem_read;
-            exmem_mem_write   <= idex_mem_write;
-            exmem_mem_to_reg  <= idex_mem_to_reg;
-            exmem_branch      <= idex_branch;
-            exmem_jump        <= idex_jump;
-            exmem_funct3      <= idex_funct3;
+            exmem_pc_plus4     <= idex_pc_plus4;
+            exmem_alu_result_r <= alu_result_E;
+            exmem_rs2_data     <= fwd_src_b_pre; // post-forwarding store data
+            exmem_rd_addr      <= idex_rd_addr;
+            exmem_reg_write    <= idex_reg_write;
+            exmem_mem_read     <= idex_mem_read;
+            exmem_mem_write    <= idex_mem_write;
+            exmem_mem_to_reg   <= idex_mem_to_reg;
+            exmem_funct3       <= idex_funct3;
         end
     end
 
@@ -342,15 +345,17 @@ module riscv_top (
 
     wire [31:0] mem_rdata_M;
     wire [31:0] mem_rdata_ext_M;
+    wire        mem_misaligned;   // Asserted on misaligned load/store address
 
     data_mem DMEM (
-        .clk       (clk),
-        .addr      (exmem_alu_result),
-        .wdata     (exmem_rs2_data),
-        .mem_read  (exmem_mem_read),
-        .mem_write (exmem_mem_write),
-        .funct3    (exmem_funct3),
-        .rdata     (mem_rdata_M)
+        .clk        (clk),
+        .addr       (exmem_alu_result),
+        .wdata      (exmem_rs2_data),
+        .mem_read   (exmem_mem_read),
+        .mem_write  (exmem_mem_write),
+        .funct3     (exmem_funct3),
+        .rdata      (mem_rdata_M),
+        .misaligned (mem_misaligned)
     );
 
     load_extend LEXT (
@@ -363,7 +368,7 @@ module riscv_top (
 // 8.  MEM/WB PIPELINE REGISTER  (spec §5.4)
 // =============================================================================
 
-    // These are wires declared forward in section 3/5 — back them with regs
+    // These are wires declared forward in §3/§5 — back them with regs
     reg [31:0] memwb_alu_result_r;
     assign memwb_alu_result = memwb_alu_result_r;
 
@@ -398,7 +403,7 @@ module riscv_top (
 // 9.  WB STAGE — Write-Back Mux  (spec §7.2)
 // =============================================================================
 
-    // wb_wdata, wb_rd_addr, wb_reg_write declared in section 3
+    // wb_wdata, wb_rd_addr, wb_reg_write declared in §3
     assign wb_rd_addr   = memwb_rd_addr_r;
     assign wb_reg_write = memwb_reg_write_r;
 
@@ -423,9 +428,22 @@ module riscv_top (
         .memwb_rd_addr  (memwb_rd_addr_r),
         .memwb_reg_write(memwb_reg_write_r),
         .stall          (stall),
-        .flush          (hz_flush_unused),
         .fwd_a_sel      (fwd_a_sel),
         .fwd_b_sel      (fwd_b_sel)
     );
+
+// =============================================================================
+// 11. SIMULATION ASSERTIONS (no effect on synthesis)
+// =============================================================================
+
+    // synthesis translate_off
+    always @(posedge clk) begin
+        if (mem_misaligned && (exmem_mem_read || exmem_mem_write))
+            $display("[riscv_top] MISALIGNED ACCESS at PC in MEM stage, addr=0x%08X",
+                      exmem_alu_result);
+        if (trap_D)
+            $display("[riscv_top] TRAP (ECALL/EBREAK) at PC=0x%08X", ifid_pc);
+    end
+    // synthesis translate_on
 
 endmodule
